@@ -269,19 +269,18 @@ KoneWebTranslator-Public/
 
 ## 사용 기술 및 라이선스 고지
 
-KoneWebTranslator는 다음 외부 프로젝트 및 모델과 연동됩니다. 표에 기재한 라이선스는 각 원본 프로젝트·모델의 공지 기준이며, KoneWebTranslator 전체 소스코드의 라이선스를 의미하지 않습니다.
+**KoneWebTranslator의 프로젝트 자체 소스코드는 GNU GPL-3.0-only 라이선스로 공개됩니다.** 사용·수정·재배포 조건은 [LICENSE](LICENSE)를 참고하세요. 외부 구성요소의 원저작권과 라이선스는 유지되며 자세한 정보는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)를 확인하세요.
 
-| 구성 요소 | 원본 프로젝트 / 모델 | 원본에서 고지하는 라이선스 | 사용 방식 |
+| 구성 요소 | 원본 프로젝트 / 모델 | 라이선스 및 확인 사항 | 사용 방식 |
 |---|---|---|---|
-| Comic Text Detector | [dmMaze/comic-text-detector](https://github.com/dmMaze/comic-text-detector) | GPL-3.0 | ONNX 기반 텍스트 영역 검출에 활용 |
-| Hayai OCR v2.5 Nova | [JustANormalTinkerer/hayai-ocr-v2.5-nova](https://huggingface.co/JustANormalTinkerer/hayai-ocr-v2.5-nova) | Apache-2.0 | 사용자의 환경에서 모델 다운로드 및 실행 |
-| Gemma 4 | [Google Gemma 4](https://ai.google.dev/gemma/docs/core/model_card_4) | Apache-2.0 (공식 모델) | 별도 준비한 로컬 모델로 번역 |
-| llama.cpp | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT | 별도 실행하는 로컬 추론 서버와 통신 |
+| Comic Text Detector | [dmMaze/comic-text-detector](https://github.com/dmMaze/comic-text-detector) | 원본 소스 GPL-3.0; 사용 모델 가중치는 별도 확인 | ONNX 검출 |
+| Hayai OCR v2.5 Nova | [Hugging Face 모델](https://huggingface.co/JustANormalTinkerer/hayai-ocr-v2.5-nova) | 모델 Apache-2.0 (배포처 표기) | 별도 다운로드 후 OCR |
+| Gemma 4 | [Google Gemma 4](https://ai.google.dev/gemma/docs/core/model_card_4) | 공식 모델 Apache-2.0; 실제 GGUF 배포본은 별도 확인 | 로컬 번역 |
+| llama.cpp | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT | 별도 로컬 서버와 통신 |
+| LaMa | [advimman/lama](https://github.com/advimman/lama) | 사용 가중치의 출처와 배포 조건은 별도 확인 | 이미지 복원 |
 
-- AI 모델 및 llama.cpp 실행 바이너리는 이 저장소에서 제공하지 않습니다. 모델 파일과 실행 프로그램은 각 공식 배포처의 안내와 사용 조건에 따라 별도로 준비합니다.
-- `local-server/detector_vendor/`에는 텍스트 영역 검출 및 후처리용 코드가 포함돼 있습니다. 해당 코드의 정확한 원본 코드 계보와 외부 GPL 코드의 복제·개작 여부는 아직 확정되지 않았으므로, 이 표를 해당 폴더의 재배포 권한 확인을 대신하는 것으로 해석해서는 안 됩니다.
-- `comictextdetector.pt.onnx` 파일을 별도로 사용하는 경우 모델 가중치 자체의 배포 조건도 별도로 확인해야 합니다. 위 GPL-3.0 표기는 **원본 Comic Text Detector 소스 저장소**의 라이선스 정보입니다.
-- 외부 구성 요소의 저작권과 라이선스는 각 권리자에게 있으며, 이 문서는 KoneWebTranslator 자체의 사용·복제·수정·재배포를 허락하는 라이선스가 아닙니다.
+- 외부 모델 가중치와 실행 바이너리는 이 저장소에 포함하지 않습니다. 이를 포함해 재배포할 때는 해당 배포본의 라이선스 및 고지 의무를 별도로 확인해야 합니다.
+- `local-server/detector_vendor/` 등 외부 구현과 관련된 출처·검증 범위는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)를 참고하세요. 프로젝트 GPL 선언이 외부 저작물의 기존 라이선스를 변경하지 않습니다.
 
 ## 사용 및 책임 고지 (Disclaimer)
 
