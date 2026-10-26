@@ -1,5 +1,10 @@
 # KoneWebTranslator
 
+
+> **怨듦컻 諛고룷????μ냼:** ????μ냼???낅┰?곸씤 怨듦컻????μ냼濡? 媛쒕컻??鍮꾧났媛???μ냼??而ㅻ컠 ?대젰???ы븿?섏? ?딆뒿?덈떎. ?ㅼ튂 諛??대줎? ?꾨옒 Public 二쇱냼瑜??ъ슜?섏꽭??
+> 
+> https://github.com/hungrymidlife/KoneWebTranslator-Public
+
 로컬 환경에서 일본어 만화 이미지의 글자를 검출하고 한국어로 번역하여 원본 웹페이지 위에 표시하는 **Chrome 확장 프로그램 + Windows 로컬 서버** 프로젝트입니다.
 
 > **프로젝트 상태:** 개발 중 / Windows 중심으로 테스트됨. 번역문은 현재 원본 이미지를 직접 수정하지 않고 오버레이로 표시합니다. 결과 정확도는 원본 이미지, 텍스트 검출, OCR 및 LLM의 성능에 따라 달라집니다.
@@ -76,8 +81,8 @@ KoneWebTranslator는 OCR과 Gemma 로컬 AI 번역을 사용하므로 일반적�
 ### 1. 저장소와 Python 준비
 
 ```powershell
-git clone https://github.com/hungrymidlife/KoneWebTranslator.git
-cd KoneWebTranslator
+git clone https://github.com/hungrymidlife/KoneWebTranslator-Public.git
+cd KoneWebTranslator-Public
 ```
 
 Python 3.11 및 Git을 설치하고 `py -3.11 --version`으로 확인하세요.
@@ -114,7 +119,7 @@ Releases의 Assets에서 `comictextdetector.pt.onnx` 파일을 다운로드합�
 다운로드한 파일을 KoneWebTranslator의 다음 위치로 복사합니다.
 
 ```text
-KoneWebTranslator/
+KoneWebTranslator-Public/
 └── local-server/
     ├── detector_vendor/
     ├── models/
@@ -130,7 +135,7 @@ KoneWebTranslator/
 PowerShell에서 다음 명령어를 실행합니다.
 
 ```powershell
-cd KoneWebTranslator\local-server
+cd KoneWebTranslator-Public\local-server
 .\setup_detector.bat
 ```
 
@@ -213,7 +218,7 @@ http://127.0.0.1:8765/health
 ## 폴더 구조
 
 ```text
-KoneWebTranslator/
+KoneWebTranslator-Public/
 ├── extension/                       # Chrome 확장 프로그램 (Manifest V3)
 │   ├── manifest.json
 │   ├── background.js                 # 이미지 다운로드·로컬 서버 통신
