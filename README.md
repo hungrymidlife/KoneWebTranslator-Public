@@ -46,8 +46,8 @@ Hayai OCR ── 필요 시 Windows OCR 보조
 | Python 패키지 | FastAPI, Uvicorn, Pydantic, Pillow, NumPy, ONNX Runtime 및 Hayai 관련 패키지 |
 | 일본어 OCR | `hayai-ocr==2.2.0` 패키지와 `JustANormalTinkerer/hayai-ocr-v2.5-nova` 모델 |
 | 검출 모델 | `local-server/models/comictextdetector.pt.onnx` 파일 |
-| 번역 서버 | llama.cpp 호환 OpenAI API 서버 (`/v1/chat/completions`) |
-| 한국어 번역 모델 | 현재 기본 설정: `gemma4-12b-local` (Gemma 4 12B GGUF 모델을 별도 준비) |
+| 번역 서버 | 로컬 llama.cpp 서버 (`127.0.0.1:18080`, OpenAI 호환 API 형식) |
+| 한국어 번역 모델 | 로컬 Gemma 4 12B GGUF 모델 (기본 모델 ID: `gemma4-12b-local`) |
 | GPU | Hayai 설치 스크립트는 CUDA 12.8용 PyTorch를 설치하도록 작성되어 있습니다. 호환 하드웨어/드라이버가 필요합니다. |
 
 
