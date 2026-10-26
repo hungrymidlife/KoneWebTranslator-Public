@@ -1,0 +1,28 @@
+<!doctype html><html lang="ko"><head><meta charset="UTF-8"><link rel="stylesheet" href="style.css"></head><body class="options"><h2>KoneWebTranslator 설정</h2><label for="url">로컬 서버 주소</label><input id="url" value="http://127.0.0.1:8765"><p class="note">보안을 위해 localhost / 127.0.0.1 주소만 허용합니다. API 키는 확장 프로그램에 입력하지 마세요.</p><button id="save">저장</button><p id="msg"></p>
+<!-- KWT_SITE_CDN_PERMISSIONS_V3 -->
+<section id="kwt-host-permissions" style="margin-top:24px;border-top:1px solid #cbd5e1;padding-top:16px">
+ <h3>사이트 실행 및 이미지 CDN 권한 관리</h3>
+ <p class="note">사이트 자동 실행과 이미지 다운로드 권한은 서로 다릅니다. 기존에 저장한 수집 규칙은 유지되지만, 이 버전에서는 사이트 실행 권한을 승인한 페이지에만 스크립트가 자동으로 삽입됩니다.</p>
+ <h4>1. 만화 사이트 실행 권한</h4>
+ <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+   <input id="kwt-site-input" type="text" placeholder="예: https://hitomi.la" style="flex:1;min-width:220px;max-width:100%;padding:8px;box-sizing:border-box">
+   <button id="kwt-site-add" type="button">사이트 실행 허용</button>
+ </div>
+ <p class="note">저장된 자동 수집 규칙에서 사이트 목록을 가져옵니다. 승인 후 기존에 열려 있던 만화 페이지는 새로고침하세요.</p>
+ <div id="kwt-site-list" style="display:grid;gap:7px"></div>
+ <h4>2. 이미지 CDN 권한 요청 대기</h4>
+ <div id="kwt-host-pending" style="display:grid;gap:7px"></div>
+ <h4>3. 이미지 CDN 권한 관리</h4>
+ <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px">
+   <input id="kwt-host-input" type="text" placeholder="예: https://a1.gold-usergeneratedcontent.net" style="flex:1;min-width:220px;max-width:100%;padding:8px;box-sizing:border-box">
+   <button id="kwt-host-add" type="button">CDN 권한 요청</button>
+   <button id="kwt-host-refresh" type="button" class="secondary">목록 새로고침</button>
+ </div>
+ <div id="kwt-host-granted" style="display:grid;gap:7px"></div>
+ <h4>4. 이전 버전에서 남은 권한</h4>
+ <p class="note">이전에 허용한 호스트와 전체 사이트 권한이 표시됩니다. 특히 <code>http://*/*</code>와 <code>https://*/*</code> 같은 광범위한 선택 권한이 남아 있다면 개별 권한보다 우선하여 접근할 수 있으므로 필요하지 않으면 삭제하세요. 로컬 서버 필수 권한은 목록에서 제외합니다.</p>
+ <div id="kwt-host-legacy" style="display:grid;gap:7px"></div>
+ <p id="kwt-host-msg" role="status" style="white-space:pre-wrap;overflow-wrap:anywhere"></p>
+</section>
+<script src="options.js"></script>
+<script src="host_permissions_v3.js"></script></body></html>

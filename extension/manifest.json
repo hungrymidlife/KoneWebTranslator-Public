@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "KoneWebTranslator",
+  "version": "0.9.22",
+  "description": "Local MangaOCR and llama.cpp Gemma Japanese-to-Korean translation",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "webNavigation",
+    "contextMenus"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "action": {
+    "default_title": "KoneWebTranslator",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html"
+}
