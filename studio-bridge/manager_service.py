@@ -404,6 +404,88 @@ class ManagerService:
 
 
 service=ManagerService()
+
+# KWT_GUI_LIFECYCLE_V1_4_0
+# Only Studio-owned AI processes are stopped. External servers are never targeted.
+_GUI_SESSION_TIMEOUT = 45.0
+_GUI_CLOSE_GRACE = 6.0
+
+
+def _kwt_stop_owned_after_gui_close(manager):
+    for engine in ('ocr', 'gemma'):
+        try:
+            with manager.lock:
+                owned = manager._owned_entry(engine)
+            if owned:
+                manager.stop(engine)
+                manager._log('[GUI] %s 서버 자동 종료 완료' % engine)
+        except Exception as exc:
+            manager._log('[GUI] %s 자동 종료 실패: %s' % (engine, exc))
+
+
+class _KwtGuiSessions:
+    def __init__(self, manager):
+        self.manager = manager
+        self.lock = threading.RLock()
+        self.sessions = {}
+        self.armed = False
+        self.empty_since = None
+        self.generation = 0
+        threading.Thread(target=self._watchdog, daemon=True, name='kwt-gui-lifecycle').start()
+
+    def touch(self, session_id):
+        if not isinstance(session_id, str) or len(session_id) < 12 or len(session_id) > 100:
+            raise ValueError('Invalid GUI session ID')
+        now = time.monotonic()
+        with self.lock:
+            self.armed = True
+            self.sessions[session_id] = now
+            self.empty_since = None
+            self.generation += 1
+        return {'ok': True}
+
+    def close(self, session_id):
+        if not isinstance(session_id, str) or len(session_id) < 12 or len(session_id) > 100:
+            raise ValueError('Invalid GUI session ID')
+        with self.lock:
+            self.sessions.pop(session_id, None)
+            self.generation += 1
+            if self.armed and not self.sessions and self.empty_since is None:
+                self.empty_since = time.monotonic()
+        return {'ok': True}
+
+    def _watchdog(self):
+        while True:
+            time.sleep(1.5)
+            now = time.monotonic()
+            with self.lock:
+                if not self.armed:
+                    continue
+                stale = [key for key, ts in self.sessions.items()
+                         if now - ts > _GUI_SESSION_TIMEOUT]
+                for key in stale:
+                    del self.sessions[key]
+                if self.sessions:
+                    self.empty_since = None
+                    continue
+                if self.empty_since is None:
+                    self.empty_since = now
+                    continue
+                if now - self.empty_since < _GUI_CLOSE_GRACE:
+                    continue
+                generation = self.generation
+                self.empty_since = None
+                self.armed = False
+            # A tab may reconnect while the watchdog releases the lock.
+            with self.lock:
+                if self.sessions or self.generation != generation:
+                    continue
+            self.manager._log('[GUI] 마지막 Studio 창 종료 감지: 소유 AI 서버 정리')
+            _kwt_stop_owned_after_gui_close(self.manager)
+
+
+_kwt_gui_sessions = _KwtGuiSessions(service)
+
 # KWT_STUDIO_LOG_POLICY_V1_4
 from log_management import install as _install_log_management
 _log_state, _log_change, _log_clear = _install_log_management(service)
@@ -421,6 +503,12 @@ def handle_get(path,params):
 
 
 def handle_post(path,body):
+    if path=='/api/manager/gui-session':
+        action=body.get('action')
+        sid=body.get('session_id')
+        if action=='touch':return _kwt_gui_sessions.touch(sid)
+        if action=='close':return _kwt_gui_sessions.close(sid)
+        raise ValueError('Invalid GUI session action')
     if path=='/api/manager/log-policy':return _log_change(body)
     if path=='/api/manager/clear-logs':return _log_clear()
     if path=='/api/manager/start':return service.start(str(body.get('server','')),str(body.get('mode','MTP')))

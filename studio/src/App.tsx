@@ -30,6 +30,31 @@ function persistPrefs(delta:Record<string,unknown>) {
 }
 
 export default function App(){
+
+  // KWT_GUI_LIFECYCLE_V1_4_0: one lease per window; stable across React StrictMode effect remounts.
+  const guiSessionId = useRef<string>(`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`)
+  useEffect(()=>{
+    const id = guiSessionId.current
+    const endpoint = 'http://127.0.0.1:18765/api/manager/gui-session'
+    const send = (action:'touch'|'close',keepalive=false)=>{
+      void fetch(endpoint,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-KWT-Studio':'1'},
+        body:JSON.stringify({action,session_id:id}),
+        keepalive,
+      }).catch(()=>{})
+    }
+    send('touch')
+    const timer=window.setInterval(()=>send('touch'),6000)
+    const onPageHide=()=>send('close',true)
+    window.addEventListener('pagehide',onPageHide)
+    return ()=>{
+      window.clearInterval(timer)
+      window.removeEventListener('pagehide',onPageHide)
+      // Do not send close on React cleanup: StrictMode remounts effects in development.
+    }
+  },[])
+
   const [connected,setConnected]=useState(false)
   const [section,setSection]=useState<StudioSection>(()=>strPref('section','editor') as StudioSection)
   const [navExpanded,setNavExpanded]=useState(()=>boolPref('navExpanded',true))

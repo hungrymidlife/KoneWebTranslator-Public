@@ -30,6 +30,6 @@ if not exist node_modules (
 )
 call npm run tauri dev
 rem KWT_STUDIO_EXIT_CLEANUP_V1_5 : stop recognized loopback Kone services on Studio exit
-"%PYTHON%" "%ROOT%\studio-bridge\studio_exit_cleanup.py"
+rem KWT_GUI_LIFECYCLE_V1_4_0: GUI lease expiry stops Studio-owned servers; do not kill external port listeners.
 if errorlevel 1 (echo [ERROR] Studio failed; check Rust, MSVC Build Tools, WebView2. & pause)
 endlocal
