@@ -356,3 +356,25 @@ canvas,
 .kwt-chrome-install-buttons button{display:inline-flex;align-items:center;gap:7px;min-height:36px}
 .kwt-chrome-notice{margin:0;color:#57d9b3}
 .kwt-chrome-pair-status{margin:0;color:#b2cadf;line-height:1.6}
+
+/* KWT_UNIFIED_RUNTIME_V1: collapsible unified settings tree */
+.kwt-settings-tree{max-width:1080px}
+.kwt-tree-group{margin-bottom:11px;border:1px solid #334257;background:#151e2b;border-radius:12px;overflow:hidden}
+.kwt-tree-group>summary{display:flex;justify-content:space-between;align-items:center;gap:14px;cursor:pointer;list-style:none;padding:17px 20px;color:#dce7f4;font-size:14px;font-weight:670}
+.kwt-tree-group>summary::-webkit-details-marker{display:none}
+.kwt-tree-group>summary:before{content:'▸';font-size:16px;color:#7ac2eb;margin-right:4px}
+.kwt-tree-group[open]>summary:before{content:'▾'}
+.kwt-tree-group>summary small{font-size:11px;color:#91a7b9;font-weight:450;margin-left:auto}
+.kwt-tree-group[open]>summary{border-bottom:1px solid #2d3c4e;background:#1c2b3c}
+.kwt-tree-body{padding:19px 22px 16px}
+.kwt-tree-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:16px}
+.kwt-tree-fields label,.kwt-tree-inline label,.kwt-tree-prompt{display:flex;flex-direction:column;gap:7px;font-size:12px;color:#b4c5d7}
+.kwt-tree-fields input,.kwt-tree-fields select,.kwt-tree-inline input,.kwt-tree-prompt textarea{width:100%;background:#101824;color:#dfebf6;border:1px solid #3b4b60;border-radius:7px;padding:9px}
+.kwt-tree-toolbar,.kwt-tree-bottom,.kwt-tree-inline{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+.kwt-tree-toolbar>span,.kwt-tree-bottom>span{flex:1;color:#a5b7c9;font-size:12px}
+.kwt-tree-inline label{flex:1;min-width:220px}
+.kwt-tree-bottom{margin-top:14px}
+.kwt-tree-notice{color:#a3d6c4;font-size:12px}
+.kwt-tree-warning{border-left:3px solid #c99b51;background:#382d2433;padding:10px;color:#e1bb89;font-size:12px}
+.kwt-tree-prompt textarea{resize:vertical;min-height:150px}
+@media(max-width:650px){.kwt-tree-group>summary{align-items:flex-start;flex-wrap:wrap}.kwt-tree-group>summary small{margin-left:20px}}

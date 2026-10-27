@@ -31,3 +31,6 @@ local-server/gemma-launch/server-path.txt
 # KWT_STUDIO_FONTS_V1_7_0: local fonts and extension runtime must never be published
 studio-bridge/.studio_runtime/
 /README_DEV.md
+
+# KWT_UNIFIED_RUNTIME_V1: private workstation configuration
+runtime_settings.json
