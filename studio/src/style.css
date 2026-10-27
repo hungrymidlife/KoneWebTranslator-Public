@@ -217,3 +217,85 @@ canvas,
 .properties .kwt-delete-layer:hover {
   background: #4d2b36;
 }
+
+/* KWT_STUDIO_FONTS_V1_7_0 */
+.kwt-font-manager{padding-bottom:30px}
+.kwt-font-import{margin:18px 0 16px}
+.kwt-font-drop{min-height:158px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:9px;text-align:center;border:2px dashed #476079;border-radius:10px;background:#111b29;padding:20px;color:#cbd7e3}
+.kwt-font-drop.dragging,.kwt-font-import:hover .kwt-font-drop{border-color:#6cbafa;background:#1a2c40}
+.kwt-font-drop h2{margin:0;font-size:16px}
+.kwt-font-drop p{margin:0;color:#93a9ba;font-size:12px}
+.kwt-font-drop button{margin-top:4px;display:flex;gap:7px;align-items:center}
+.kwt-font-library-heading{display:flex;justify-content:space-between;align-items:center;gap:15px;margin:14px 0}
+.kwt-font-library-heading h2{font-size:16px;margin:0}
+.kwt-font-library-heading span{color:#9eb1c4;font-size:12px}
+.kwt-font-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.kwt-font-card{border:1px solid #334252;background:#192331;border-radius:10px;overflow:hidden;min-width:0}
+.kwt-font-card.default{border-color:#5a9ecf}
+.kwt-font-preview{height:110px;background:#101720;display:flex;align-items:center;justify-content:center;padding:8px}
+.kwt-font-preview img{max-width:100%;max-height:100%;object-fit:contain}
+.kwt-font-card-body{padding:12px}
+.kwt-font-title{display:flex;align-items:center;gap:8px;font-size:13px;min-width:0}
+.kwt-font-title strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kwt-font-subtitle{font-size:11px;color:#8fa8bf;margin:6px 0 12px;overflow-wrap:anywhere}
+.kwt-font-actions{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.kwt-font-actions label{display:flex;gap:6px;align-items:center;font-size:12px;cursor:pointer}
+.kwt-font-actions .subtle-btn{padding:5px 8px;gap:5px}
+.kwt-font-notice{margin-top:18px}
+.kwt-font-property select{width:100%;background:#1a2432;color:#e7f0f8;border:1px solid #48576d;border-radius:7px;padding:9px 10px}
+.kwt-font-property button{margin-top:8px}
+@media(max-width:920px){.kwt-font-library-heading{align-items:flex-start;flex-direction:column}.kwt-font-grid{grid-template-columns:1fr}}
+
+
+/* KWT_FONT_DELETE_CONFIRM_V1_7_2: only explicit confirmation deletes a font. */
+.kwt-font-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: rgba(0, 0, 0, 0.68);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.kwt-font-confirm-dialog {
+  width: min(480px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  color: #e7edf7;
+  background: #1a2332;
+  border: 1px solid #4a5e72;
+  border-radius: 12px;
+  padding: 22px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.62);
+}
+.kwt-font-confirm-dialog h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+.kwt-font-confirm-dialog p {
+  margin: 0;
+  line-height: 1.75;
+  color: #b9cadb;
+  overflow-wrap: anywhere;
+}
+.kwt-font-confirm-dialog strong {color: #fff;}
+.kwt-font-confirm-actions {
+  margin-top: 22px;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.kwt-font-confirm-actions button {min-width: 84px;}
+.kwt-font-delete-danger {
+  color: #fff;
+  background: #a93848;
+  border: 1px solid #c44c60;
+  border-radius: 8px;
+  padding: 8px 14px;
+}
+.kwt-font-delete-danger:hover:not(:disabled) {background: #c44457;}
+.kwt-font-confirm-actions button:focus-visible {
+  outline: 2px solid #77c9f3;
+  outline-offset: 2px;
+}

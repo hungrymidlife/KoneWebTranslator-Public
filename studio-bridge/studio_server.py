@@ -27,6 +27,12 @@ from extension_service import get as extension_get, post as extension_post, EXT_
 BASE = Path(__file__).resolve().parent.parent
 TRANS = BASE / 'local-trans'
 sys.path.insert(0, str(TRANS))
+# KWT_STUDIO_FONTS_V1_7_0
+from font_library import (list_fonts as kwt_list_fonts, register_bytes as kwt_register_font,
+                          register_paths as kwt_import_fonts, select_default as kwt_font_default,
+                          remove_font as kwt_font_remove, font_preview as kwt_font_preview,
+                          font_file as kwt_font_file, font_for as kwt_font_for,
+                          validate_font_id as kwt_validate_font_id)
 PORT = int(os.getenv('KWT_STUDIO_PORT', '18765'))
 IMAGES = {'.png', '.jpg', '.jpeg', '.webp', '.bmp'}
 projects = {}
@@ -93,7 +99,8 @@ def _normalize_edit(edit, size):
               'stroke_color': str(edit.get('stroke_color', '#ffffff')),
               'stroke_width': max(0, min(12, int(edit.get('stroke_width', 2)))),
               'align': str(edit.get('align', 'left')),
-              'visible': bool(edit.get('visible', True))}
+              'visible': bool(edit.get('visible', True)),
+              'font_id': kwt_validate_font_id(str(edit.get('font_id','system')))}
     for key in ('text_color', 'stroke_color'):
         if not re.fullmatch(r'#[0-9a-fA-F]{6}', result[key]):
             raise ValueError('Color must be #RRGGBB')
@@ -162,6 +169,7 @@ class Project:
             layer = {'region_id': rid, 'ocr_bbox': region.get('bbox') or base,
                      'bbox': list(base), 'text': str(region.get('translated_text') or typ.get('text') or ''),
                      'source_text': str(region.get('text') or ''), 'font_size': typ.get('font_size', 26),
+                     'font_id': typ.get('font_id','system'),
                      'text_color': typ.get('text_color') or '#000000',
                      'stroke_color': typ.get('stroke_color') or '#ffffff',
                      'stroke_width': typ.get('stroke_width', 2), 'align': 'left', 'visible': True,
@@ -177,7 +185,7 @@ class Project:
             bbox = list(edit.get('bbox', [80, 80, 220, 120]))
             layers.append({'region_id': rid, 'ocr_bbox': list(bbox), 'bbox': bbox,
                            'text': str(edit.get('text', '')), 'source_text': '',
-                           'font_size': edit.get('font_size', 24),
+                           'font_size': edit.get('font_size', 24), 'font_id': edit.get('font_id','system'),
                            'text_color': edit.get('text_color', '#000000'),
                            'stroke_color': edit.get('stroke_color', '#ffffff'),
                            'stroke_width': edit.get('stroke_width', 2),
@@ -224,22 +232,15 @@ class Project:
                 return out.getvalue(), 'image/jpeg'
         return raw, 'image/png' if kind == 'clean' else ('image/jpeg' if Path(name).suffix.lower() in ('.jpg', '.jpeg') else 'image/png' if Path(name).suffix.lower()=='.png' else 'image/webp')
 
-    def _font(self, size):
-        for f in ('C:/Windows/Fonts/malgun.ttf', 'C:/Windows/Fonts/malgunbd.ttf'):
-            if Path(f).is_file():
-                return ImageFont.truetype(f, int(size))
-        # On non-Windows developer environments use the closest available font.
-        for f in ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',):
-            if Path(f).is_file():
-                return ImageFont.truetype(f, int(size))
-        return ImageFont.load_default()
+    def _font(self, size, font_id='system'):
+        return kwt_font_for(size, font_id)
 
     def _manual_draw(self, painter, edit):
         if not edit['visible'] or not edit['text']:
             return
         from typesetting_layout import _lines
         x, y, w, h = edit['bbox']
-        font = self._font(edit['font_size'])
+        font = self._font(edit['font_size'], edit.get('font_id','system'))
         stroke = edit['stroke_width']
         pad = min(4, max(1, w//20))
         lines = _lines(painter, edit['text'], font, max(1, w-2*pad), stroke)
@@ -288,7 +289,7 @@ class Project:
             style = {'text_color': typ.get('text_color', '#000000'),
                      'stroke_color': typ.get('stroke_color') or '#ffffff'}
             # Matches existing automatic text layout implementation.
-            layout_and_draw(painter, text, bounds, self._font, style)
+            layout_and_draw(painter, text, bounds, lambda size: self._font(size,typ.get('font_id','system')), style)
         # Draw user-created text boxes after automatic boxes.
         for rid, edit in edits.items():
             if MANUAL_LAYER_ID.fullmatch(str(rid)) and isinstance(edit, dict) and not edit.get('deleted'):
@@ -454,7 +455,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin', origin)
             self.send_header('Vary','Origin')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-KWT-Studio, X-KWT-Extension-Key')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-KWT-Studio, X-KWT-Extension-Key, X-KWT-Font-Name')
 
     def _send(self, status, data, content_type='application/json; charset=utf-8'):
         raw = json.dumps(data, ensure_ascii=False).encode('utf-8') if isinstance(data, (dict,list)) else data
@@ -487,6 +488,19 @@ class Handler(BaseHTTPRequestHandler):
                 if origin and origin not in ('http://localhost:1420','http://127.0.0.1:1420','tauri://localhost','http://tauri.localhost','https://tauri.localhost'):
                     return self._send(403,{'error':'Origin is not allowed'})
                 return self._send(200,studio_manager_get(path,q))
+            if path.startswith('/api/fonts'):
+                origin=self.headers.get('Origin','')
+                if origin and origin not in ('http://localhost:1420','http://127.0.0.1:1420','tauri://localhost','http://tauri.localhost','https://tauri.localhost'):
+                    return self._send(403,{'error':'Origin is not allowed'})
+                if path=='/api/fonts/preview':
+                    return self._send(200,kwt_font_preview(q.get('id','system')),'image/png')
+                if path=='/api/fonts/file':
+                    data,ctype=kwt_font_file(q.get('id',''))
+                    return self._send(200,data,ctype)
+                if self.headers.get('X-KWT-Studio')!='1':
+                    return self._send(403,{'error':'Studio request header required'})
+                if path=='/api/fonts':return self._send(200,kwt_list_fonts())
+                return self._send(404,{'error':'Unknown font API'})
             if path=='/api/health': return self._send(200, {'ok': True, 'engine': str(TRANS), 'projects': len(projects)})
             if path=='/api/projects':
                 with projects_lock: data=[p.status() for p in projects.values()]
@@ -526,7 +540,19 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get('X-KWT-Studio') != '1':
                 return self._send(403, {'error': 'Studio request header required'})
             path=urlparse(self.path).path
+            if path=='/api/fonts/upload':
+                from urllib.parse import unquote
+                length=int(self.headers.get('Content-Length','0'))
+                if not 32<=length<=24*1024*1024:
+                    raise ValueError('글꼴 파일 용량은 최대 24MB입니다.')
+                name=unquote(self.headers.get('X-KWT-Font-Name',''))
+                if not name or len(name)>250:
+                    raise ValueError('글꼴 파일명이 올바르지 않습니다.')
+                return self._send(200,kwt_register_font(name,self.rfile.read(length)))
             body=self._body()
+            if path=='/api/fonts/default':return self._send(200,kwt_font_default(str(body.get('id',''))))
+            if path=='/api/fonts/remove':return self._send(200,kwt_font_remove(str(body.get('id',''))))
+            if path=='/api/fonts/import-paths':return self._send(200,kwt_import_fonts(body.get('paths')))
             if path.startswith('/api/extension/studio/'):
                 return self._send(200,extension_post(path,body,self.headers))
             if path.startswith('/api/manager/'):

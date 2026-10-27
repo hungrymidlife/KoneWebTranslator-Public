@@ -7,7 +7,8 @@ import {Play,Square,RefreshCw,CheckCircle2,AlertTriangle,Save,FolderOpen,Termina
 const mgrRead=(name:string, fallback:string)=>{try{return window.localStorage.getItem('kwt-studio-manager-'+name)||fallback}catch{return fallback}}
 const mgrWrite=(name:string,value:string)=>{try{window.localStorage.setItem('kwt-studio-manager-'+name,value)}catch{}}
 
-export type StudioSection='editor'|'servers'|'translation'|'ocr'|'logs'|'settings'|'extension'
+// KWT_STUDIO_FONTS_V1_7_0
+export type StudioSection='editor'|'servers'|'translation'|'ocr'|'logs'|'settings'|'extension'|'fonts'
 type EngineState={online:boolean;owned:boolean;pid:number|null;models?:string[];engine?:string}
 type Status={gemma:EngineState;ocr:EngineState;log_seq:number}
 type Settings={gemma_dir:string;prompt:string;temperature:number;max_tokens:number;ocr_mode:string;patches:number;confidence:number}
@@ -96,7 +97,7 @@ export default function ControlCenter({section,status,onStatusRefresh}:{section:
   }
   const patch=(delta:Partial<Settings>)=>setSettings(p=>({...p,...delta}))
   const ready=loaded&&!busy
-  const names:Record<StudioSection,string>={editor:'번역 · 검수 · 편집',servers:'AI 서버 관리',translation:'번역 설정',ocr:'OCR 설정',logs:'로그 · 진단',settings:'환경 설정',extension:'웹 확장앱 관리'}
+  const names:Record<StudioSection,string>={editor:'번역 · 검수 · 편집',servers:'AI 서버 관리',translation:'번역 설정',ocr:'OCR 설정',logs:'로그 · 진단',settings:'환경 설정',extension:'웹 확장앱 관리',fonts:'폰트 관리'}
   return <main className="control-center scroll">
     <div className="control-heading"><div><span className="eyebrow">통합 관리 콘솔</span><h1>{names[section]}</h1><p>현재 Studio에서 Gemma 번역과 OCR 엔진을 함께 관리해.</p></div><button className="subtle-btn" onClick={()=>void run('상태 새로고침',async()=>{await Promise.all([onStatusRefresh(),fetchSettings()])})}><RefreshCw size={16}/>새로고침</button></div>
     {error&&<div className="control-alert error"><AlertTriangle size={17}/><span>{error}</span><button onClick={()=>setError('')}>닫기</button></div>}

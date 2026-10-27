@@ -28,3 +28,5 @@ models/
 local-server/gemma_manager_settings.json
 local-server/gemma-launch/server-path.txt
 .gitleaks-report.json
+# KWT_STUDIO_FONTS_V1_7_0: local fonts and extension runtime must never be published
+studio-bridge/.studio_runtime/
