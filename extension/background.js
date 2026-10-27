@@ -4,7 +4,10 @@ async function requestServer(path,options={}) {
   const base=serverUrl.replace(/\/$/,'');
   if(!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(base))throw Error('로컬 주소만 허용됩니다.');
   const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),300000);
-  try {const r=await fetch(base+path,{...options,signal:controller.signal});if(!r.ok){let detail='';try{const e=await r.json();detail=e.detail||'';}catch{}throw Error('서버 HTTP '+r.status+(detail?' / '+detail:''));}return await r.json();}
+  try {const r=await fetch(base+path,{...options,signal:controller.signal});if(!r.ok){let detail='';try{const e=await r.json();detail=e.detail||'';}catch{}throw Error('서버 HTTP '+r.status+(detail?' / '+detail:''));}const payload=await r.json();
+    // KWT_EXTENSION_PRESENCE_V2_0_3: translation is independent from this best-effort activity signal.
+    if(typeof globalThis.kwtStudioActivityV2==='function')globalThis.kwtStudioActivityV2();
+    return payload;}
   finally{clearTimeout(timer);}
 }
 async function notifyProgress(tabId, frameId, payload) {

@@ -5,7 +5,9 @@ import EditorCanvas from './EditorCanvas'
 import ControlCenter,{StatusDots,useEngineStatus,type StudioSection} from './ControlCenter'
 import ExtensionCenter from './ExtensionCenter'
 import FontManager from './FontManager'
-import {LayoutDashboard,Server,Languages,ScanText,Terminal,Settings2,Menu,Type} from 'lucide-react'
+import SetupCenter from './SetupCenter'
+// KWT_STUDIO_INSTALLER_V2_0_0
+import {LayoutDashboard,Server,Languages,ScanText,Terminal,Settings2,Menu,Type,Download} from 'lucide-react'
 import {api,imageUrl,fontFileUrl,type FontLibrary,type Project,type PageData,type PageList,type LayerData,type ZipItem} from './api'
 
 // KWT_STUDIO_LAYER_CRUD_V1_6_1
@@ -439,6 +441,7 @@ export default function App(){
           ['translation','번역 설정',Languages],
           ['ocr','OCR 설정',ScanText],
           ['fonts','폰트 관리',Type],
+          ['installer','설치 · 환경 점검',Download],
           ['extension','웹 확장앱 관리',Puzzle],
           ['logs','로그 · 진단',Terminal],
           ['settings','환경 설정',Settings2],
@@ -511,7 +514,8 @@ export default function App(){
     </div>
     {section==='extension'&&<ExtensionCenter/>}
     {section==='fonts'&&<FontManager onChanged={()=>void refreshFonts().catch(()=>{})}/>}
-    {section!=='editor'&&section!=='extension'&&section!=='fonts'&&<ControlCenter section={section} status={engineStatus} onStatusRefresh={refreshEngineStatus}/>}
+    {/* KWT_CHROME_EXTENSION_GUIDE_V2_0_2 */}{section==='installer'&&<SetupCenter onOpenExtension={()=>setSection('extension')}/>}
+    {section!=='editor'&&section!=='extension'&&section!=='fonts'&&section!=='installer'&&<ControlCenter section={section} status={engineStatus} onStatusRefresh={refreshEngineStatus}/>}
     </div></div>
     {fontBulkConfirm&&<div className="kwt-bridge-restart-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setFontBulkConfirm(false)}}>
       <div className="kwt-bridge-restart-dialog" role="dialog" aria-modal="true" aria-labelledby="kwt-font-bulk-title">

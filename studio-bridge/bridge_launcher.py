@@ -42,8 +42,11 @@ def http_get(route: str):
 def probe():
     """Returns compatible, old/foreign, unavailable (doesn't mutate anything)."""
     status, data = http_get(EXT_PATH)
+    # KWT_STUDIO_INSTALLER_V2_0_0: a bridge without installer APIs is obsolete.
     if status == 200 and isinstance(data, dict) and 'paired' in data and 'revision' in data:
-        return 'compatible'
+        installer_status, installer_data = http_get('/api/installer/status')
+        if installer_status == 200 and isinstance(installer_data, dict) and 'items' in installer_data:
+            return 'compatible'
     health_status, _ = http_get('/api/health')
     if status is not None or health_status is not None:
         return 'incompatible'

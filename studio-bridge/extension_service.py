@@ -18,6 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent / '.studio_runtime'
 CONFIG = ROOT / 'extension-shared.json'
 AUTH = ROOT / 'extension-private.json'
+PRESENCE = ROOT / 'extension-presence.json'  # KWT_EXTENSION_PRESENCE_V2_0_3
 STUDIO_ORIGINS = frozenset(('http://localhost:1420','http://127.0.0.1:1420',
                             'tauri://localhost','http://tauri.localhost','https://tauri.localhost'))
 EXT_RE = re.compile(r'chrome-extension://([a-p]{32})$')
@@ -31,6 +32,9 @@ pair_code=None
 pair_expiry=0
 pair_attempts=0
 last_seen=0
+last_sync=0
+last_activity=0
+last_persisted=0
 permissions=[]
 
 def read(path, fallback):
@@ -97,6 +101,54 @@ def normalize(data, base=None, editable_only=False):
         else:result[key]=origins(value)
     return result
 
+# KWT_EXTENSION_PRESENCE_V2_0_3: validated pair-bound runtime status, not proof Chrome is open.
+def _presence_timestamp(value):
+    try:
+        number = float(value)
+    except (ValueError, TypeError, OverflowError):
+        return 0
+    now = time.time()
+    return number if 0 < number <= now + 60 else 0
+
+
+def _restore_presence():
+    global last_seen, last_sync, last_activity, permissions
+    saved = read(PRESENCE,{})
+    auth = read(AUTH,{})
+    # An unpaired or re-paired extension may never inherit an earlier ID's activity.
+    if not auth.get('extension_id') or saved.get('extension_id') != auth.get('extension_id'):
+        return
+    last_sync = _presence_timestamp(saved.get('last_sync',0))
+    last_activity = _presence_timestamp(saved.get('last_activity',0))
+    last_seen = max(last_sync,last_activity)
+    stored_origins = saved.get('granted_origins',[])
+    permissions = origins(stored_origins) if isinstance(stored_origins,list) else []
+
+
+def _record_presence(sync=False):
+    global last_seen,last_sync,last_activity,last_persisted
+    now = time.time()
+    last_activity = last_seen = now
+    if sync: last_sync=now
+    auth = read(AUTH,{})
+    if not auth.get('extension_id'):
+        return
+    # Prevent high-frequency job-status polling from wearing the disk.
+    if sync or now-last_persisted >= 20:
+        try:
+            atomic(PRESENCE,{
+                'extension_id':auth['extension_id'],
+                'last_sync':last_sync,'last_activity':last_activity,
+                'granted_origins':list(permissions),
+            })
+            last_persisted=now
+        except OSError:
+            # Connection and translation must still work if a status file is read-only.
+            pass
+
+
+_restore_presence()
+
 def _studio(headers):
     origin=headers.get('Origin','')
     if origin and origin not in STUDIO_ORIGINS:raise PermissionError('허용되지 않은 Studio 출처')
@@ -129,13 +181,14 @@ def get(path,query,headers):
         if path=='/api/extension/studio/state':
             return {'paired':bool(auth.get('extension_id')),'extension_id':auth.get('extension_id',''),
                     'revision':state.get('revision',0),'settings':state.get('settings',dict(DEFAULTS)),
-                    'connected':bool(last_seen and time.time()-last_seen<150),
-                    'last_seen':last_seen,'granted_origins':list(permissions),
+                    'connected':bool(auth.get('extension_id') and last_seen and 0 <= time.time()-last_seen < 150),
+                    'last_seen':last_seen,'last_sync':last_sync,'last_activity':last_activity,
+                    'granted_origins':list(permissions),
                     'pair_code_active':bool(pair_code and time.time()<pair_expiry)}
     raise ValueError('알 수 없는 확장앱 조회 요청')
 
 def post(path,body,headers):
-    global pair_code,pair_expiry,pair_attempts,last_seen,permissions
+    global pair_code,pair_expiry,pair_attempts,last_seen,last_sync,last_activity,last_persisted,permissions
     with lock:
         if path.startswith('/api/extension/studio/'):
             _studio(headers)
@@ -147,7 +200,9 @@ def post(path,body,headers):
                 return {'code':pair_code,'expires_seconds':600}
             if path=='/api/extension/studio/unpair':
                 atomic(AUTH,{})
-                pair_code=None;last_seen=0;permissions=[]
+                pair_code=None;last_seen=last_sync=last_activity=last_persisted=0;permissions=[]
+                try:PRESENCE.unlink(missing_ok=True)
+                except OSError:pass
                 return {'unpaired':True}
             if path=='/api/extension/studio/save':
                 st=read(CONFIG,{'revision':0,'settings':dict(DEFAULTS)})
@@ -172,8 +227,14 @@ def post(path,body,headers):
                 raise PermissionError('연결 코드가 올바르지 않습니다.')
             secret=secrets.token_urlsafe(32)
             atomic(AUTH,{'extension_id':cid,'token':secret})
-            pair_code=None;pair_attempts=0;last_seen=time.time()
+            pair_code=None;pair_attempts=0
+            _record_presence(sync=False)
             return {'token':secret,'revision':0}
+        # Recent authenticated activity is independent from configuration sync.
+        if path=='/api/extension/client/activity':
+            _client(headers,body)
+            _record_presence()
+            return {'ok':True}
         if path=='/api/extension/client/sync':
             _client(headers,body)
             st=read(CONFIG,{'revision':0,'settings':dict(DEFAULTS)})
@@ -188,6 +249,6 @@ def post(path,body,headers):
             # Otherwise server state wins, so pending Studio changes aren't overwritten.
             origins_in=body.get('granted_origins',[])
             permissions=origins(origins_in) if isinstance(origins_in,list) else []
-            last_seen=time.time()
+            _record_presence(sync=True)
             return _reply(revision,st['settings'])
         raise ValueError('알 수 없는 확장앱 동기화 요청')
