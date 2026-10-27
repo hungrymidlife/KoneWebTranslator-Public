@@ -12,6 +12,7 @@ import hashlib
 import shutil
 import json
 import os
+import re
 import subprocess
 import threading
 import time
@@ -126,6 +127,29 @@ def request_json(url, timeout=0.9):
         return json.load(response)
 
 
+# KWT_STUDIO_LOG_FIX_DUAL_V1_2_1: display only; never alter OCR/API results.
+_KWT_UESC = re.compile(r'\\u([0-9a-fA-F]{4})')
+_KWT_STREAM_SPLIT = re.compile(r'(?<!^)(?=\[KWT_STREAM\])')
+
+
+def _kwt_log_display_lines(raw):
+    raw = raw.rstrip('\r\n')
+    if not raw.strip():
+        return []
+    # Convert literal JSON-style \\uXXXX strings to readable characters,
+    # without applying broad unicode_escape to Windows paths or arbitrary escapes.
+    def replace(match):
+        return chr(int(match.group(1), 16))
+    raw = _KWT_UESC.sub(replace, raw)
+    result = []
+    for physical in raw.splitlines():
+        for part in _KWT_STREAM_SPLIT.split(physical):
+            part = part.strip()
+            if part:
+                result.append(part)
+    return result
+
+
 class ManagerService:
     def __init__(self):
         self.lock = threading.RLock()
@@ -168,7 +192,11 @@ class ManagerService:
                     line=stream.readline()
                     if line:
                         idle=0
-                        if line.strip():self._log(f'[{name}] {line.rstrip()}')
+                        if line.strip():
+                            # KWT_STUDIO_LOG_FIX_DUAL_V1_2_1: repair display-only escaped Unicode
+                            # and separate progress events combined by concurrent writers.
+                            for message in _kwt_log_display_lines(line):
+                                self._log(f'[{name}] {message}')
                     else:
                         time.sleep(0.35)
                         try:
@@ -300,6 +328,9 @@ class ManagerService:
         if not python.is_file():raise FileNotFoundError(f'OCR Python 가상환경이 없습니다: {python}')
         if not server.is_file():raise FileNotFoundError(f'OCR 서버가 없습니다: {server}')
         env=os.environ.copy();env['KWT_OCR_GPU']='0'
+        # KWT_STUDIO_LOG_FIX_DUAL_V1_2_1: enforce UTF-8 for Python stdout.
+        env['PYTHONIOENCODING']='utf-8'
+        env['PYTHONUTF8']='1'
         return self._spawn(name,[str(python),'-u',str(server)],BASE,env=env)
 
     def stop(self,name):

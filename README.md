@@ -103,6 +103,34 @@ KoneWebTranslator는 OCR과 Gemma 로컬 AI 번역을 사용하므로 일반적�
 
 이 프로젝트는 소스코드 배포본입니다. `.venv`, `node_modules`, AI 모델, llama.cpp 실행 파일은 포함하지 않습니다.
 
+### Windows 일본어 OCR 팩 설치 (조건부 보조 OCR 필수 구성)
+
+<!-- KWT_WINDOWS_JP_OCR_INSTALL_V1 -->
+
+KoneWebTranslator는 **Hayai OCR을 기본으로 사용**하지만, 숫자·기호가 많은 영역에는 **Windows OCR(일본어)**을 조건부 보조 엔진으로 사용합니다. 이 기능을 사용하려면 Windows에 **일본어 OCR 언어 기능 `Language.OCR~~~ja-JP~0.0.1.0`**이 설치되어 있어야 합니다. Python `requirements.txt` 또는 `SETUP_HAYAI.bat`만으로는 이 Windows 기능이 설치되지 않습니다.
+
+프로젝트 **루트**에서 아래 파일을 실행하세요. 이미 설치된 PC라면 재설치하지 않습니다. 설치가 필요한 경우 Windows 관리자 권한으로 실행해야 합니다.
+
+```powershell
+.\INSTALL_WINDOWS_OCR_JP.bat
+```
+
+설치 여부를 직접 확인하려면 **관리자 PowerShell**에서 다음을 실행합니다.
+
+```powershell
+Get-WindowsCapability -Online -Name 'Language.OCR~~~ja-JP~0.0.1.0'
+```
+
+결과의 `State`가 `Installed`이면 설치된 것입니다. `NotPresent`라면 관리자 PowerShell에서 다음 명령으로 설치할 수 있습니다.
+
+```powershell
+Add-WindowsCapability -Online -Name 'Language.OCR~~~ja-JP~0.0.1.0'
+```
+
+설치 후 OCR 서버를 다시 시작하세요. Windows의 언어/선택적 기능 업데이트가 차단된 조직 PC에서는 설치가 실패할 수 있으며, Windows Update 접근 권한이 필요할 수 있습니다. Windows **화면 표시 언어를 일본어로 변경할 필요는 없습니다**. Windows OCR 팩은 Hayai 모델을 대체하지 않으며, Windows OCR을 수동 또는 조건부 보조로 사용할 때 필요합니다.
+
+Microsoft 안내: https://learn.microsoft.com/en-us/windows/powertoys/text-extractor
+
 ### 1. 필수 프로그램 설치
 
 - Git: https://git-scm.com/download/win
