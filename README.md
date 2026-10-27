@@ -170,33 +170,67 @@ cd ..
 
 ### 6. LaMa 이미지 복원 모델 자동 다운로드
 
-ZIP 식질의 원문 제거와 배경 복원에 사용하는 LaMa 모델은 Git 저장소에 포함되지 않습니다. **저장소 루트에서** 다음 명령으로 자동 다운로드하세요.
+ZIP 자동 식질의 원문 제거/배경 복원용 모델은 Git에 포함되지 않습니다. **저장소 루트**에서 다음을 실행하세요.
 
 ```powershell
 .\DOWNLOAD_LAMA.bat
 ```
 
-스크립트는 `local-trans/models/big-lama.pt`에 약 206MB의 모델을 내려받고, 공개된 SHA-256 체크섬으로 무결성을 검증합니다. 이미 검증된 파일이 있으면 다운로드를 생략합니다. 기존 파일이 체크섬과 다르면 **덮어쓰지 않고 중단**합니다. 네트워크 오류 시 다시 실행할 수 있습니다.
-
-모델 출처: https://huggingface.co/signature-ai/big-lama (Apache-2.0 표기). 모델 파일은 PyTorch 직렬화 포맷이므로 신뢰하는 출처의 모델만 사용하세요.
-
-설치 확인:
+- 모델 저장 위치: `local-trans/models/big-lama.pt`
+- 다운로드 출처: https://huggingface.co/signature-ai/big-lama
+- 모델 용량: 약 206 MB. 다운로드 스크립트는 SHA-256을 검증하고, 이미 검증된 파일은 재사용합니다.
+- 성공 로그 예시: `[OK] Verified LaMa model` / `[OK] LaMa model download completed.`
 
 ```powershell
 Test-Path .\local-trans\models\big-lama.pt
 ```
 
-이 검사는 파일 존재만 확인합니다. 실제 식질 동작은 Studio ZIP 처리에서 별도로 확인해야 합니다.
+`True`는 파일 존재를 뜻하며, 실제 이미지 복원 품질은 Studio에서 별도로 확인해야 합니다. **`DOWNLOAD_LAMA.bat`이 없는 경우** 공개 저장소에 LaMa 자동 다운로드 패치 V1.0.7이 아직 반영되지 않은 것입니다. 스크립트가 없는 상태에서 위 명령을 실행하지 마세요. 먼저 패치를 적용하고 Git에 커밋/Push해야 신규 사용자도 이용할 수 있습니다.
 
-### 7. Gemma 번역 서버 설치
+### 7. Gemma 4 번역 서버 준비 (현재 수동 설치 / 자동 설치기 미포함)
 
-이 저장소에는 Gemma GGUF 가중치, llama.cpp 실행 파일, MTP draft 모델 및 사용자 PC의 `Launch.ps1`이 없습니다. 사용자가 별도로 호환 서버와 모델을 준비해야 합니다.
+**중요:** 현재 공개 저장소에는 Gemma GGUF 모델, llama.cpp 실행 파일, MTP draft 모델, `Launch.ps1` 및 **Gemma 자동 설치기**가 포함되지 않습니다. 이 단계는 아직 BAT 하나로 자동 설치되지 않습니다. 서버 설치를 완료하기 전에는 Studio의 번역 기능이 동작하지 않습니다.
 
-- 기본 API: `http://127.0.0.1:18080/v1`
-- 모델 확인: `http://127.0.0.1:18080/v1/models`
-- 기본 모델 ID 예시: `gemma4-12b-local` (실제 서버 ID와 일치시켜야 함)
+#### 7-1. 준비할 구성요소
 
-Studio의 **AI 서버 관리**에서 Gemma 실행 폴더를 선택합니다. `Launch.ps1` 기반 실행 구성은 해당 스크립트가 준비되어 있어야 합니다. 모델을 다운로드하는 것만으로 서버가 자동 실행되지는 않습니다. MTP 기능은 호환 서버 및 draft 모델이 준비된 경우에만 사용합니다.
+| 구성요소 | 역할 | 확인 사항 |
+|---|---|---|
+| `llama-server.exe` | OpenAI 호환 로컬 번역 API | https://github.com/ggml-org/llama.cpp/releases 에서 Windows 및 GPU에 맞는 빌드 확보 |
+| Gemma 4 12B GGUF | 실제 일본어→한국어 번역 모델 | 사용 가능한 GGUF 배포본의 출처·라이선스·양자화·VRAM 요구량 확인 |
+| MTP draft GGUF (선택) | 호환 환경에서 추론 가속 | 서버/모델 조합을 검증한 경우에만 사용. 기본 번역 동작에는 필수 아님 |
+| 실행 스크립트 | 서버 시작/중지 | 사용자 설치 경로와 모델 파일명에 맞춰 설정 필요 |
+
+**기본 설치 경로 예시:** `C:\AI\Gemma4MTP` (개발자 환경의 경로이며 **필수 경로는 아닙니다**). 다른 드라이브나 폴더에 설치해도 됩니다. 예시 구조:
+
+```text
+C:\AI\Gemma4MTP\
+  llama-bin\llama-server.exe
+  models\<사용자가 선택한 Gemma4-12B GGUF 파일>
+  Launch.ps1             # 사용자 환경에 맞춰 별도 준비
+```
+
+현재 공개 저장소는 모델의 **정확한 다운로드 URL과 SHA-256, llama.cpp CUDA 릴리스 버전, Launch.ps1 자동 생성 기능을 제공하지 않습니다.** 검증되지 않은 파일명/다운로드 주소를 자동 설치 명령으로 안내하지 않습니다. 추후 Gemma4MTP 설치기를 공개 저장소에 통합하면 이 절을 자동 설치 단계로 교체할 예정입니다.
+
+#### 7-2. 기존 설치가 있는 사용자
+
+기존에 Gemma4MTP를 설치했다면 **재설치하지 마세요.** 기존 서버를 실행한 뒤 Studio의 **AI 서버 관리**에서 실제 설치 폴더를 선택합니다. 모델 파일명과 실행 옵션은 기존 `Launch.ps1`을 따릅니다.
+
+#### 7-3. 서버 연결 확인
+
+기본 연결값:
+
+- API: `http://127.0.0.1:18080/v1`
+- 모델 목록: `http://127.0.0.1:18080/v1/models`
+- Studio 기본 모델 ID: `gemma4-12b-local` (실제 서버가 노출하는 모델 ID와 일치해야 함)
+- 바인딩 주소: 외부 공개를 피하도록 `127.0.0.1` 권장
+
+서버를 **실행한 다음** PowerShell에서 확인합니다.
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:18080/v1/models
+```
+
+정상 응답으로 모델 목록이 나오면 연결 가능 상태입니다. 응답이 없으면 서버 실행 여부, 포트, 방화벽, 모델 로딩 오류를 먼저 확인하세요. MTP 기능은 선택 사항이며, 호환 모델과 서버 구성이 검증된 경우에만 활성화합니다.
 
 ### 8. Studio 실행
 
@@ -236,9 +270,11 @@ Test-Path .\local-server\.venv-hayai\Scripts\python.exe
 Test-Path .\studio\node_modules
 Test-Path .\local-server\models\comictextdetector.pt.onnx
 Test-Path .\local-trans\models\big-lama.pt
+Test-Path .\DOWNLOAD_DETECTOR.bat
+Test-Path .\DOWNLOAD_LAMA.bat
 ```
 
-각 항목을 설치했다면 `True`여야 합니다. OCR 서버 실행 후 `http://127.0.0.1:8765/health`, Gemma 서버 실행 후 `http://127.0.0.1:18080/v1/models`를 확인하세요.
+모든 필수 구성요소를 설치했다면 각 경로가 `True`여야 합니다. `DOWNLOAD_LAMA.bat`이 `False`이면 공개 저장소에 V1.0.7 LaMa 패치가 아직 반영되지 않은 것입니다. Gemma는 파일 존재 검사만으로 완료 여부를 판단할 수 없으므로 `/v1/models` 응답을 별도로 확인하세요. OCR 서버 실행 후 `http://127.0.0.1:8765/health`, Gemma 서버 실행 후 `http://127.0.0.1:18080/v1/models`를 확인하세요.
 
 ### 오류 해결
 
@@ -248,8 +284,9 @@ Test-Path .\local-trans\models\big-lama.pt
 | `py -3.11` 오류 | Python 3.11 및 Python Launcher 설치 |
 | `npm` 없음 | Node.js 설치 후 터미널 재시작 |
 | `cargo` 없음 | Rust 설치 또는 `RUN_STUDIO_WEB.bat` 사용 |
-| Comic Text Detector 파일 없음 | ONNX 모델을 정확한 경로에 배치하고 `setup_detector.bat` 실행 |
-| Gemma 연결 실패 | 18080 포트, `/v1/models` 응답, 모델 ID 확인 |
+| Comic Text Detector 파일 없음 | 저장소 루트에서 `DOWNLOAD_DETECTOR.bat` 실행 |
+| LaMa 모델 파일 없음 | `DOWNLOAD_LAMA.bat` 설치 여부를 확인하고 루트에서 실행 |
+| Gemma 연결 실패 | 서버 실행 여부, 18080 포트, `/v1/models` 응답, 모델 ID 확인 |
 | 확장앱 오류 | 확장앱과 웹페이지 새로고침 |
 
 **보안/라이선스:** `.venv`, `.venv-hayai`, `node_modules`, AI 모델, 로컬 설정, 인증 키, 작업 결과 및 로그를 Git에 커밋하지 마세요. 모델의 재배포 조건은 원저작권자의 라이선스를 따릅니다.
