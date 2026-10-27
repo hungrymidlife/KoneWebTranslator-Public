@@ -161,6 +161,7 @@ class ManagerService:
         if not isinstance(self.registry, dict):
             self.registry = {}
         self._log('Studio 통합 관리자 준비 완료 (프로세스 재연결 지원)')
+        self._log('[KWT_LOG_V1_2_2] UTF-8 producer fix active; replacement characters in OCR text may be model output')
         changed = False
         for name in ('gemma', 'ocr'):
             entry = self.registry.get(name)
