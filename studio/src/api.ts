@@ -12,7 +12,7 @@ export type PageList = {index:number;name:string;ready:boolean;edited:boolean}[]
 export type ZipItem = {path:string;name:string;processed:boolean}
 
 export async function api<T>(path:string, body?:unknown):Promise<T>{
-  const res=await fetch(BASE+path,body===undefined?((path.startsWith('/api/manager/')||path.startsWith('/api/extension/')||path.startsWith('/api/fonts')||path.startsWith('/api/installer/'))?{headers:{'X-KWT-Studio':'1'}}:{}):{method:'POST',headers:{'Content-Type':'application/json','X-KWT-Studio':'1'},body:JSON.stringify(body)})
+  const res=await fetch(BASE+path,body===undefined?((path.startsWith('/api/manager/')||path.startsWith('/api/extension/')||path.startsWith('/api/fonts')||path.startsWith('/api/installer/')||path.startsWith('/api/chat/'))? /* KWT_LOCAL_CHAT_V2_2_0 */{headers:{'X-KWT-Studio':'1'}}:{}):{method:'POST',headers:{'Content-Type':'application/json','X-KWT-Studio':'1'},body:JSON.stringify(body)})
   const type=res.headers.get('Content-Type')||''
   const data=type.includes('application/json')?await res.json():await res.text()
   if(!res.ok)throw new Error((data&&data.error)||`HTTP ${res.status}`)
