@@ -14,6 +14,8 @@ type Runtime={
   ocr:{pad_x_percent:number;pad_y_percent:number}
   translation:{max_region_count:number;max_source_chars:number;timeout_sec:number;top_k:number;top_p:number;min_p:number}
   chat:{context_reserve:number;auto_reply_margin:number;summary_batch_messages:number;summary_chunk_budget:number;summary_output_tokens:number;summary_max_chars:number;summary_previous_chars:number;timeout_sec:number;continue_limit:number}
+  // KWT_UNIFIED_IMAGE_V1_5
+  typesetting:{lama_tile_size:number;lama_tile_context:number;typeset_min_font_size:number;typeset_max_font_size:number;typeset_padding_percent:number;typeset_line_height_ratio:number;output_image_quality:number;zip_compression_level:number}
 }
 type Existing={gemma_dir:string;prompt:string;temperature:number;max_tokens:number;ocr_mode:string;patches:number;confidence:number}
 type Props={
@@ -34,6 +36,7 @@ const DEFAULTS:Runtime={
   ocr:{pad_x_percent:12,pad_y_percent:8},
   translation:{max_region_count:20,max_source_chars:1200,timeout_sec:120,top_k:64,top_p:0.9,min_p:0.05},
   chat:{context_reserve:400,auto_reply_margin:512,summary_batch_messages:4,summary_chunk_budget:1150,summary_output_tokens:700,summary_max_chars:2200,summary_previous_chars:2000,timeout_sec:300,continue_limit:3},
+  typesetting:{lama_tile_size:768,lama_tile_context:72,typeset_min_font_size:8,typeset_max_font_size:72,typeset_padding_percent:4.5,typeset_line_height_ratio:1.24,output_image_quality:92,zip_compression_level:6},
 }
 const FIELDS=[
   {key:'context_size',label:'모델 컨텍스트 길이',min:2048,max:131072,step:1024},
@@ -51,7 +54,7 @@ const PAGE_META:Record<SettingsGroup,{label:string;hint:string}>={
   ocr:{label:'OCR / 텍스트 검출',hint:'기존 OCR 설정 및 공통 여백 · 새로운 검출 작업부터 반영'},
   translation:{label:'번역 설정',hint:'기존 번역 프로필 및 요청별 고급 옵션 · 다음 번역 요청부터 반영'},
   chat:{label:'로컬 채팅 / 기억',hint:'대화별 설정 · 공통 기억 압축 및 자동 이어쓰기'},
-  typesetting:{label:'이미지 처리 / 식질',hint:'기존 검수·식질 설정 유지'},
+  typesetting:{label:'이미지 처리 / 식질',hint:'자동 ZIP·검수 공통 프로필 · 다음 작업부터 적용'},
 }
 
 export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,saveLegacy,ready,mode,setMode,browseGemma,gemmaOnline}:Props){
@@ -73,7 +76,7 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
   const pipelineChange=(key:keyof Runtime['pipeline'],value:number)=>{
     setRuntime(prev=>({...prev,pipeline:{...prev.pipeline,[key]:value}}));setDirty(true);setNotice('')
   }
-  const advancedChange=(section:'ocr'|'translation'|'chat',key:string,value:number)=>{
+  const advancedChange=(section:'ocr'|'translation'|'chat'|'typesetting',key:string,value:number)=>{
     setRuntime(prev=>({...prev,[section]:{...prev[section],[key]:value}}));setDirty(true);setNotice('')
   }
   const save=async()=>{
@@ -82,15 +85,15 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
     try{
       const result=await api<{values:Runtime}>('/api/manager/runtime-settings',runtime)
       setRuntime(result.values);setDirty(false)
-      setNotice('통합 설정 저장 완료. 채팅 공통 옵션은 새 메시지부터 적용되고, 기존 대화별 설정과 기록은 유지돼.')
+      setNotice('통합 설정 저장 완료. 이미지·식질 옵션은 다음 ZIP 또는 메타데이터가 없는 검수 페이지부터 반영돼.')
     }catch(e){setError(e instanceof Error?e.message:String(e))}
     finally{setSaving(false)}
   }
   const reset=()=>{
-    if(selectedGroup==='overview'||selectedGroup==='typesetting')return
+    if(selectedGroup==='overview')return
     setRuntime(prev=>({...prev,[selectedGroup]:{...defaults[selectedGroup]}}));setDirty(true);setNotice('현재 설정 그룹 기본값을 입력했어. 저장해야 반영돼.')
   }
-  const runtimePage=['gemma','pipeline','ocr','translation','chat'].includes(selectedGroup) // KWT_UNIFIED_CHAT_V1_4
+  const runtimePage=['gemma','pipeline','ocr','translation','chat','typesetting'].includes(selectedGroup) // KWT_UNIFIED_CHAT_V1_4
   return <div className="kwt-settings-tree kwt-settings-page">
     <section className="control-card kwt-settings-page-intro">
       <p className="kwt-settings-breadcrumb">환경 설정 / {PAGE_META[selectedGroup].label}</p>
@@ -194,8 +197,28 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
       </section>
       <ChatConversationSettings serverContext={runtime.gemma.context_size}/>
     </>}
-    {selectedGroup==='typesetting'&&<section className="control-card">
-      <h2>기존 식질 · 검수 설정 유지</h2><p className="ctl-description">현재 폰트 라이브러리와 검수 기본 설정을 그대로 사용해. LaMa 타일, 글자 배치, 출력 품질 및 ZIP 압축 옵션은 후속 단계에서 연결할 예정이야.</p>
+    {selectedGroup==='typesetting'&&<section className="control-card settings-form">
+      {/* KWT_UNIFIED_IMAGE_V1_5: settings shared by automatic ZIP and review */}
+      <h2>LaMa 배경 복원</h2>
+      <div className="kwt-tree-fields">
+        <label>LaMa 타일 최대 길이 (px)<input type="number" min={512} max={1024} step={64} value={runtime.typesetting.lama_tile_size} disabled={loading} onChange={e=>advancedChange('typesetting','lama_tile_size',Number(e.target.value))}/></label>
+        <label>LaMa 타일 주변 문맥 (px)<input type="number" min={0} max={256} step={8} value={runtime.typesetting.lama_tile_context} disabled={loading} onChange={e=>advancedChange('typesetting','lama_tile_context',Number(e.target.value))}/></label>
+      </div>
+      <h2>자동 식질 및 검수 렌더링</h2>
+      <div className="kwt-tree-fields">
+        <label>자동 최소 글꼴 크기 (px)<input type="number" min={8} max={48} step={1} value={runtime.typesetting.typeset_min_font_size} disabled={loading} onChange={e=>advancedChange('typesetting','typeset_min_font_size',Number(e.target.value))}/></label>
+        <label>자동 최대 글꼴 크기 (px)<input type="number" min={8} max={96} step={1} value={runtime.typesetting.typeset_max_font_size} disabled={loading} onChange={e=>advancedChange('typesetting','typeset_max_font_size',Number(e.target.value))}/></label>
+        <label>자동 내부 여백 (%)<input type="number" min={0} max={15} step={0.5} value={runtime.typesetting.typeset_padding_percent} disabled={loading} onChange={e=>advancedChange('typesetting','typeset_padding_percent',Number(e.target.value))}/></label>
+        <label>글자 행간 배율<input type="number" min={1} max={1.8} step={0.01} value={runtime.typesetting.typeset_line_height_ratio} disabled={loading} onChange={e=>advancedChange('typesetting','typeset_line_height_ratio',Number(e.target.value))}/></label>
+      </div>
+      <p className="ctl-description">수동 레이어에 직접 지정한 글꼴 크기·좌표는 변경되지 않아. 행간 배율은 수동 레이어의 줄 간격에도 반영돼.</p>
+      <h2>결과 이미지와 ZIP 저장</h2>
+      <div className="kwt-tree-fields">
+        <label>JPEG·WebP 저장 품질<input type="number" min={60} max={100} step={1} value={runtime.typesetting.output_image_quality} disabled={loading} onChange={e=>advancedChange('typesetting','output_image_quality',Number(e.target.value))}/></label>
+        <label>ZIP 압축 수준<input type="number" min={0} max={9} step={1} value={runtime.typesetting.zip_compression_level} disabled={loading} onChange={e=>advancedChange('typesetting','zip_compression_level',Number(e.target.value))}/></label>
+      </div>
+      <p className="ctl-description">자동 처리 시작 시 프로필을 고정해 각 페이지 메타데이터에 기록해. 검수 화면에서 다시 그릴 때는 해당 기록을 재사용하므로, 저장 후 설정을 바꿔도 기존 페이지의 자동 레이아웃은 변하지 않아. 기존 페이지 메타데이터에 설정 기록이 없으면 현재 공통 설정을 사용해.</p>
+      <p className="ctl-description">PNG는 무손실로 저장되고, 품질 수치는 JPEG·WebP에만 적용돼. 이미 완성된 ZIP은 설정 저장만으로 다시 압축되지 않아.</p>
     </section>}
   </div>
 }

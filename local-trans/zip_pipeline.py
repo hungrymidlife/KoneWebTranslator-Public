@@ -9,6 +9,7 @@ import zipfile
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageStat
 from inpainting_lama import restore as lama_restore
+from render_settings import load_render_settings  # KWT_UNIFIED_IMAGE_V1_5
 # KWT_STUDIO_FONTS_V1_7_0: font library shared with Studio.
 from font_library import font_for as kwt_registered_font, default_font_id as kwt_default_font_id
 
@@ -92,12 +93,13 @@ def select_text_style(image, box, mode='auto'):
             'background_range':spread,'color_mode':mode}
 
 
-def typeset(raw, regions, report=None, text_color_mode='auto', cache_dir=None):
+def typeset(raw, regions, report=None, text_color_mode='auto', cache_dir=None, render_cfg=None):
     # V14_BALANCED_TYPESETTING
     from typesetting_layout import layout_and_draw
+    render_cfg = render_cfg if render_cfg is not None else load_render_settings()
     with Image.open(io.BytesIO(raw)) as opened:
         im = ImageOps.exif_transpose(opened).convert('RGB')
-    im, mask, inpaint_meta = lama_restore(im, regions, report, cache_dir=cache_dir)
+    im, mask, inpaint_meta = lama_restore(im, regions, report, cache_dir=cache_dir, render_cfg=render_cfg)
     draw = ImageDraw.Draw(im)
     placements = []
     for region in regions:
@@ -117,10 +119,10 @@ def typeset(raw, regions, report=None, text_color_mode='auto', cache_dir=None):
         # V15_BUBBLE_SAFE_LAYOUT: conservative mask-based correction; fallback is original bbox.
         from bubble_safe_layout import propose_safe_bbox
         layout_box, layout_reason = propose_safe_bbox(im, (x,y,w,h))
-        info = layout_and_draw(draw, translated, layout_box or (x,y,w,h), font_for, style)
+        info = layout_and_draw(draw, translated, layout_box or (x,y,w,h), font_for, style, render_cfg=render_cfg)
         if info is None and layout_box is not None:
             # Revert if proposed safe area cannot fit the translated text.
-            info = layout_and_draw(draw, translated, (x,y,w,h), font_for, style)
+            info = layout_and_draw(draw, translated, (x,y,w,h), font_for, style, render_cfg=render_cfg)
             layout_box = None
             layout_reason = 'safe_layout_overflow_fallback'
         if info is not None:
@@ -194,6 +196,7 @@ def process_zip(source, output_dir, report=lambda *args: None, cancelled=lambda:
         raise ValueError('Invalid text color mode')
     progress = progress or (lambda **kwargs: None)
     batch_pages, batch_raw_bytes = _kwt_batch_snapshot()
+    render_cfg = load_render_settings()  # frozen for this ZIP
     source = Path(source).resolve()
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -214,7 +217,7 @@ def process_zip(source, output_dir, report=lambda *args: None, cancelled=lambda:
                 raise ValueError('No supported images in ZIP')
             total = len(pages)
             progress(stage='시작', page=0, total=total, detail='OCR 0 | 번역 0 | 저장 0')
-            with zipfile.ZipFile(temp_target, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zout:
+            with zipfile.ZipFile(temp_target, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=render_cfg['zip_compression_level']) as zout:
                 for batch in build_batches(zin, pages, report, batch_pages, batch_raw_bytes):
                     if cancelled():
                         raise InterruptedError('User cancelled; server in-flight job may continue')
@@ -281,16 +284,17 @@ def process_zip(source, output_dir, report=lambda *args: None, cancelled=lambda:
                             progress(stage='한국어 식질 중', page=index+1,total=total,name=info.filename,
                                      image=raw,image_kind='source',detail=f'OCR {ocr_done}/{total} | 번역 {translated_done}/{total} | 저장 {written}/{total}')
                             cache_dir = Path(str(target) + '.layers') / f'page_{index+1:04d}'
-                            im, placements, inpaint_meta = typeset(raw,regions,report,text_color_mode=text_color_mode,cache_dir=cache_dir)
+                            im, placements, inpaint_meta = typeset(raw,regions,report,text_color_mode=text_color_mode,cache_dir=cache_dir,render_cfg=render_cfg)
                             inpaint_meta['cache_path'] = str(cache_dir)
                             fmt = 'JPEG' if Path(info.filename).suffix.lower() in ('.jpg','.jpeg') else 'PNG' if Path(info.filename).suffix.lower()=='.png' else 'WEBP'
                             buf = io.BytesIO()
                             if fmt=='PNG':im.save(buf,format=fmt)
-                            else:im.save(buf,format=fmt,quality=92)
+                            else:im.save(buf,format=fmt,quality=render_cfg['output_image_quality'])
                             data = buf.getvalue()
                             zout.writestr(info.filename,data)
                             used.add(info.filename)
-                            rec.update(status='completed',regions=regions,typesetting=placements,inpainting=inpaint_meta,width=im.width,height=im.height)
+                            rec.update(status='completed',regions=regions,typesetting=placements,inpainting=inpaint_meta,
+                                       render_settings=render_cfg.copy(),width=im.width,height=im.height)
                             written += 1
                             progress(stage='페이지 완료',page=index+1,total=total,name=info.filename,record=rec,image=data,image_kind='result',
                                      detail=f'OCR {ocr_done}/{total} | 번역 {translated_done}/{total} | 저장 {written}/{total}')
