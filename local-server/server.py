@@ -1,4 +1,4 @@
-import sys
+import sys
 import base64
 import hashlib
 import io
@@ -28,7 +28,8 @@ MAX_PIXELS = 35_000_000
 MAX_BATCH = 100
 Image.MAX_IMAGE_PIXELS = MAX_PIXELS
 app = FastAPI(title='KoneWebTranslator Local OCR', version='0.9.1')
-executor = ThreadPoolExecutor(max_workers=1)
+from worker_runtime import worker_count  # KWT_UNIFIED_WORKERS_V1_2
+executor = ThreadPoolExecutor(max_workers=worker_count('ocr_workers', 2), thread_name_prefix='kwt-ocr')
 lock = threading.RLock()
 jobs = {}
 ocr_engine = None
@@ -77,18 +78,18 @@ def health():
 
 
 # KWT_OCR_SAFE_LOG_V1
-
-# KWT_LOG_V1_2_2: force UTF-8 at the producer; do not touch OCR return values.
-def _kwt_configure_log_streams():
-    for _stream in (sys.stdout, sys.stderr):
-        if hasattr(_stream, 'reconfigure'):
-            try:
-                _stream.reconfigure(encoding='utf-8', errors='backslashreplace', write_through=True)
-            except (OSError, ValueError, TypeError):
-                pass
-
-_kwt_configure_log_streams()
-
+
+# KWT_LOG_V1_2_2: force UTF-8 at the producer; do not touch OCR return values.
+def _kwt_configure_log_streams():
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, 'reconfigure'):
+            try:
+                _stream.reconfigure(encoding='utf-8', errors='backslashreplace', write_through=True)
+            except (OSError, ValueError, TypeError):
+                pass
+
+_kwt_configure_log_streams()
+
 def safe_ocr_print(*args, **kwargs):
     """Do not abort OCR when the Windows console cannot encode Japanese text."""
     try:
@@ -150,7 +151,9 @@ def process_job(job_id, items, pad_x_percent, pad_y_percent):
             with Image.open(io.BytesIO(item['data'])) as opened:
                 im = ImageOps.exif_transpose(opened).convert('RGB')
                 width, height = im.size
-                regions = detect_regions(im)
+                # KWT_UNIFIED_WORKERS_V1_2: detector lazy-init / shared ONNX session guard.
+                with ocr_lock:
+                    regions = detect_regions(im)
                 texts = []
                 for idx, reg in enumerate(regions, 1):
                     x1, y1 = max(0, reg.x), max(0, reg.y)
@@ -239,8 +242,9 @@ def process_job(job_id, items, pad_x_percent, pad_y_percent):
     with lock:
         current = jobs[job_id]
         current['status'] = 'completed' if all('error' not in r for r in outputs) else 'completed_with_errors'
-        snapshot = dict(current)
-    persist_job_snapshot(snapshot)
+        # KWT_UNIFIED_WORKERS_V1_2: persist under the shared job lock.
+        persist_job_snapshot(dict(current))
+
     from stream_translate import complete_ocr
     complete_ocr(job_id, jobs, lock, persist_job_snapshot)
 

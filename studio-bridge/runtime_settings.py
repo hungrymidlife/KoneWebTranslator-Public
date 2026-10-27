@@ -21,7 +21,8 @@ DEFAULTS = {
         'parallel_slots': 1, 'top_k': 64, 'top_p': 0.9,
         'min_p': 0.05, 'repeat_penalty': 1.1,
     },
-    'pipeline': {'batch_pages': 3, 'batch_raw_mb': 22},
+    'pipeline': {'batch_pages': 3, 'batch_raw_mb': 22,  # KWT_UNIFIED_WORKERS_V1_2
+                 'ocr_workers': 1, 'translation_workers': 1, 'zip_workers': 1},
 }
 
 INTEGER_RULES = {
@@ -31,6 +32,9 @@ INTEGER_RULES = {
     ('gemma', 'top_k'): (0, 200),
     ('pipeline', 'batch_pages'): (1, 20),
     ('pipeline', 'batch_raw_mb'): (4, 22),
+    ('pipeline', 'ocr_workers'): (1, 2),
+    ('pipeline', 'translation_workers'): (1, 4),
+    ('pipeline', 'zip_workers'): (1, 2),
 }
 FLOAT_RULES = {
     ('gemma', 'top_p'): (0.01, 1.0),
@@ -65,7 +69,12 @@ def normalize(value):
     result = copy.deepcopy(DEFAULTS)
     for section in ('gemma', 'pipeline'):
         data = value.get(section)
-        if not isinstance(data, dict) or set(data) != set(DEFAULTS[section]):
+        if not isinstance(data, dict):
+            raise ValueError(f'{section} 설정이 유효하지 않습니다.')
+        # KWT_UNIFIED_WORKERS_V1_2: old V1 JSONs may omit the three new worker keys.
+        missing = set(DEFAULTS[section]) - set(data)
+        legacy_keys = {'ocr_workers', 'translation_workers', 'zip_workers'} if section == 'pipeline' else set()
+        if set(data) - set(DEFAULTS[section]) or missing - legacy_keys:
             raise ValueError(f'{section} 설정 항목이 누락되었거나 알 수 없는 항목이 있습니다.')
         for key, item in data.items():
             result[section][key] = _validate(section, key, item)

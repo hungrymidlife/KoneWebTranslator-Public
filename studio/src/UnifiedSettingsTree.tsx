@@ -8,7 +8,7 @@ export type SettingsGroup='overview'|'gemma'|'pipeline'|'ocr'|'translation'|'cha
 type Runtime={
   schema_version:number
   gemma:{context_size:number;gpu_layers:number;flash_attention:'on'|'off'|'auto';parallel_slots:number;top_k:number;top_p:number;min_p:number;repeat_penalty:number}
-  pipeline:{batch_pages:number;batch_raw_mb:number}
+  pipeline:{batch_pages:number;batch_raw_mb:number;ocr_workers:number;translation_workers:number;zip_workers:number} // KWT_UNIFIED_WORKERS_V1_2
 }
 type Existing={gemma_dir:string;prompt:string;temperature:number;max_tokens:number;ocr_mode:string;patches:number;confidence:number}
 type Props={
@@ -25,7 +25,7 @@ type Props={
 const DEFAULTS:Runtime={
   schema_version:1,
   gemma:{context_size:8192,gpu_layers:99,flash_attention:'on',parallel_slots:1,top_k:64,top_p:0.9,min_p:0.05,repeat_penalty:1.1},
-  pipeline:{batch_pages:3,batch_raw_mb:22},
+  pipeline:{batch_pages:3,batch_raw_mb:22,ocr_workers:1,translation_workers:1,zip_workers:1},
 }
 const FIELDS=[
   {key:'context_size',label:'모델 컨텍스트 길이',min:2048,max:131072,step:1024},
@@ -71,7 +71,7 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
     try{
       const result=await api<{values:Runtime}>('/api/manager/runtime-settings',runtime)
       setRuntime(result.values);setDirty(false)
-      setNotice('저장 완료. Gemma는 서버 재시작 후, ZIP 배치는 다음 작업부터 적용돼.')
+      setNotice('저장 완료. Gemma/OCR 서버 실행 옵션은 서버 재시작 후, ZIP 병렬 수는 다음 작업부터 적용돼.')
     }catch(e){setError(e instanceof Error?e.message:String(e))}
     finally{setSaving(false)}
   }
@@ -115,8 +115,13 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
       <div className="kwt-tree-fields">
         <label>배치 이미지 수<input type="number" min={1} max={20} step={1} value={runtime.pipeline.batch_pages} disabled={loading} onChange={e=>pipelineChange('batch_pages',Number(e.target.value))}/></label>
         <label>배치 최대 원본 데이터 (MB)<input type="number" min={4} max={22} step={1} value={runtime.pipeline.batch_raw_mb} disabled={loading} onChange={e=>pipelineChange('batch_raw_mb',Number(e.target.value))}/></label>
+        {/* KWT_UNIFIED_WORKERS_V1_2: real bounded task pools */}
+        <label>OCR 동시 배치 작업 수 (1~2)<input type="number" min={1} max={2} step={1} value={runtime.pipeline.ocr_workers} disabled={loading} onChange={e=>pipelineChange('ocr_workers',Number(e.target.value))}/></label>
+        <label>번역 동시 페이지 작업 수 (1~4)<input type="number" min={1} max={4} step={1} value={runtime.pipeline.translation_workers} disabled={loading} onChange={e=>pipelineChange('translation_workers',Number(e.target.value))}/></label>
+        <label>동시 ZIP 처리 수 (1~2)<input type="number" min={1} max={2} step={1} value={runtime.pipeline.zip_workers} disabled={loading} onChange={e=>pipelineChange('zip_workers',Number(e.target.value))}/></label>
       </div>
-      <p className="ctl-description">ZIP / OCR / 번역 동시 작업자 수는 현재 각각 1로 고정돼 있어. 숫자 변경만으로 병렬화할 수는 없으므로 2단계에서 작업 큐와 함께 구현해.</p>
+      <p className="ctl-description">OCR·번역 작업 수는 OCR 서버를 재시작해야 반영돼. ZIP 동시 작업 수는 다음 자동 ZIP 실행부터 적용돼. Hayai 인식 호출은 단일 자식 프로세스 내부에서 안전하게 직렬화돼.</p>
+<p className="ctl-description">Gemma 번역 병렬 처리 성능을 높이려면 AI 서버의 병렬 요청 슬롯(-np)도 함께 늘리고 서버를 재시작해야 해. GPU 메모리 부족 시 작업 수를 1로 되돌려 줘.</p>
       <p className="ctl-description">서버 요청 크기 제한 35 MB를 고려해 배치 원본 크기는 최대 22 MB로 제한해. 설정은 작업 시작 시 고정돼.</p>
     </section>}
 
