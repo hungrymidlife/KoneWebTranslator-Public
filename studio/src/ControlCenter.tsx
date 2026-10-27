@@ -1,7 +1,7 @@
 import {useCallback,useEffect,useRef,useState} from 'react'
 import {motion,AnimatePresence} from 'motion/react'
 import {api} from './api'
-import UnifiedSettingsTree from './UnifiedSettingsTree' // KWT_UNIFIED_RUNTIME_V1
+import UnifiedSettingsTree,{type SettingsGroup} from './UnifiedSettingsTree' // KWT_UNIFIED_RUNTIME_V1 KWT_UNIFIED_NAV_TREE_V1_1
 import {Play,Square,RefreshCw,CheckCircle2,AlertTriangle,Save,FolderOpen,Terminal,Server,ShieldCheck} from 'lucide-react'
 
 // KWT_STUDIO_PREFERENCES_V1_6: persistent local view-only controls.
@@ -33,7 +33,7 @@ export function useEngineStatus(){
   return {status,refresh}
 }
 
-export default function ControlCenter({section,status,onStatusRefresh}:{section:StudioSection;status:Status|null;onStatusRefresh:()=>Promise<void>}){
+export default function ControlCenter({section,settingsGroup,status,onStatusRefresh}:{section:StudioSection;settingsGroup:SettingsGroup;status:Status|null;onStatusRefresh:()=>Promise<void>}){
   const [settings,setSettings]=useState<Settings>(INITIAL)
   const [loaded,setLoaded]=useState(false)
   const [mode,setMode]=useState<'MTP'|'Normal'>(()=>mgrRead('mode','MTP')==='Normal'?'Normal':'MTP')
@@ -137,7 +137,7 @@ export default function ControlCenter({section,status,onStatusRefresh}:{section:
       </section>}
       {section==='logs'&&<section className="control-card settings-form"><h2>로그 파일 관리</h2><p className="ctl-description">기본 파일 보관 OFF · 서버 재시작 없이 변경 가능 · 디스크 누적 자동 정리</p><label className="check-label"><input type="checkbox" checked={logPolicy.enabled} onChange={e=>setLogPolicy(p=>({...p,enabled:e.target.checked}))}/>로그 파일 보관 ON/OFF</label><div className="settings-pair"><label>보관 기간<select value={logPolicy.days} onChange={e=>setLogPolicy(p=>({...p,days:Number(e.target.value)}))}><option value={1}>1일</option><option value={7}>7일</option><option value={30}>30일</option></select></label><label>최대 용량<select value={logPolicy.max_mb} onChange={e=>setLogPolicy(p=>({...p,max_mb:Number(e.target.value)}))}><option value={50}>50 MB</option><option value={100}>100 MB</option><option value={500}>500 MB</option><option value={1024}>1 GB</option></select></label></div><p className="ctl-description">저장 파일 {logPolicy.file_count}개 · {(logPolicy.size_bytes/1048576).toFixed(2)} MB</p><p className="ctl-description" style={{overflowWrap:'anywhere'}}>경로: {logPolicy.folder}</p><p className="ctl-description">{logPolicy.limitation}</p><div className="control-buttons"><button className="primary" disabled={!!busy} onClick={saveLogPolicy}><Save size={15}/>정책 저장</button><button className="secondary" disabled={!!busy} onClick={clearLogFiles}>로그 파일 전체 비우기</button><button className="secondary" onClick={()=>void reloadLogPolicy()}>용량 새로고침</button></div></section>}
       {section==='logs'&&<section className="control-card log-card"><div className="row-spread"><div><h2><Terminal size={19}/>Gemma / OCR 실행 로그</h2><p className="ctl-description">Studio가 직접 시작한 서버의 콘솔 출력과 작업 관리 이벤트를 보여줘. 이미 외부에서 실행된 서버의 콘솔은 읽을 수 없어.</p></div><label className="check-label"><input type="checkbox" checked={autoScroll} onChange={e=>setAutoScroll(e.target.checked)}/>자동 스크롤</label></div><div className="console-full scroll">{lines.map(l=><div key={l.seq}><time>{l.time}</time> {l.message}</div>)}<div ref={logEnd}/></div><div className="row-spread"><span className="muted">최근 {lines.length}개 표시 · 서버당 로그 스트림 통합</span><button className="secondary" onClick={()=>{setLines([]);lastLog.current=0}}>로그 다시 불러오기</button></div></section>}
-      {section==='settings'&&<><UnifiedSettingsTree legacy={settings} updateLegacy={patch} saveLegacy={kind=>{void save(kind)}} ready={ready} mode={mode} setMode={setMode} browseGemma={browseGemma} gemmaOnline={Boolean(status?.gemma.online)}/><section className="control-card"><h2>프로젝트 구조</h2><p className="ctl-description">새 통합 Studio GUI와 기존 번역 엔진을 구분해 관리해.</p><div className="setting-path"><strong>studio/</strong><span>React · Tauri · 편집기</span></div><div className="setting-path"><strong>studio-bridge/</strong><span>로컬 API · 서버 프로세스 관리</span></div><div className="setting-path"><strong>local-server/</strong><span>Gemma 설정 · OCR 엔진</span></div><div className="setting-path"><strong>local-trans/</strong><span>자동 ZIP 번역 · LaMa · 식질</span></div></section><section className="control-card"><h2><ShieldCheck size={18}/>안전한 실행 원칙</h2><p className="ctl-description">서버는 127.0.0.1에서만 접근하고, Studio가 실행하지 않은 서버는 종료하지 않아. 기존 Tkinter 도구는 검증 기간 동안 삭제하지 않아.</p></section></>}
+      {section==='settings'&&<UnifiedSettingsTree selectedGroup={settingsGroup} legacy={settings} updateLegacy={patch} saveLegacy={kind=>{void save(kind)}} ready={ready} mode={mode} setMode={setMode} browseGemma={browseGemma} gemmaOnline={Boolean(status?.gemma.online)}/>}
     </motion.div></AnimatePresence>
   </main>
 }
