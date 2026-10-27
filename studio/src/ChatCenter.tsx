@@ -3,7 +3,9 @@ import {Bot,Brain,LoaderCircle,MessageSquare,Plus,Save,Send,Settings2,Trash2,Use
 import {api} from './api'
 import './ChatCenter.css'
 
-type ChatMessage={role:'user'|'assistant';content:string}
+type ChatMessage={role:'user'|'assistant';content:string;generation?:{
+  finish_reason:string;completion_tokens:number;segments:number;truncated:boolean
+}}
 type ChatRecord={
   id:string;title:string;created:number;updated:number;system_prompt:string;
   context_tokens:number;reply_tokens:number;temperature:number;
@@ -111,10 +113,10 @@ export default function ChatCenter({gemmaOnline}:{gemmaOnline:boolean}){
         <label>시스템 지침<textarea rows={3} value={draft.system_prompt} onChange={e=>setDraft({...draft,system_prompt:e.target.value})}/></label>
         <div className="kwt-chat-settings-grid">
           <label>실제 서버 컨텍스트 (-c)<select value={draft.context_tokens} onChange={e=>setDraft({...draft,context_tokens:Number(e.target.value)})}>{[4096,8192,16384,32768].map(n=><option key={n} value={n}>{n.toLocaleString()} tokens</option>)}</select></label>
-          <label>최대 답변 토큰<input type="number" min={128} max={2048} step={128} value={draft.reply_tokens} onChange={e=>setDraft({...draft,reply_tokens:Number(e.target.value)})}/></label>
+          <label>최대 답변 토큰 (0 = 자동)<input type="number" min={0} max={draft.context_tokens-1024} step={128} value={draft.reply_tokens} onChange={e=>setDraft({...draft,reply_tokens:Number(e.target.value)})}/></label>
           <label>Temperature<input type="number" min={0} max={2} step={0.05} value={draft.temperature} onChange={e=>setDraft({...draft,temperature:Number(e.target.value)})}/></label>
         </div>
-        <p className="kwt-chat-hint">컨텍스트 설정은 서버 실행 파일의 <code>-c</code> 값과 반드시 일치시켜야 합니다. 여기서 변경해도 서버의 메모리 크기는 바뀌지 않습니다.</p>
+        <p className="kwt-chat-hint">답변 토큰 0은 자동 모드입니다. 모델이 스스로 마칠 때까지 생성하되 남은 컨텍스트가 안전 한도입니다. 컨텍스트 설정은 서버의 <code>-c</code> 값과 일치시켜야 하며, 여기서 변경해도 서버 메모리는 늘어나지 않습니다.</p>
         <button type="button" className="kwt-chat-primary" disabled={busy} onClick={()=>void saveSettings()}><Save size={15}/> 설정 저장</button>
         <div className="kwt-chat-memory"><Brain size={16}/><b>자동 압축 기억</b><span>원본 {chat?.messages.length||0}개 메시지 중 {chat?.summary_through||0}개 압축</span></div>
         <div className="kwt-chat-summary">{chat?.summary||'아직 압축된 이전 대화가 없습니다.'}</div>
@@ -124,7 +126,14 @@ export default function ChatCenter({gemmaOnline}:{gemmaOnline:boolean}){
         {chat&&chat.messages.length===0&&<div className="kwt-chat-empty"><Bot size={42}/><h3>무엇을 도와드릴까요?</h3><p>대화는 로컬에 저장되며 오래된 내용은 자동으로 요약됩니다.</p></div>}
         {chat?.messages.map((m,i)=><div key={`${chat.id}-${i}`} className={'kwt-chat-turn '+m.role}>
           <div className="kwt-chat-avatar">{m.role==='assistant'?<Bot size={17}/>:<User size={17}/>}</div>
-          <div className="kwt-chat-bubble">{m.content}</div>
+          <div className="kwt-chat-message-body">
+            <div className="kwt-chat-bubble">{m.content}</div>
+            {m.role==='assistant'&&m.generation&&<div className={'kwt-chat-generation'+(m.generation.truncated?' warn':'')}>
+              {m.generation.truncated?'⚠ 답변이 아직 완성되지 않았습니다. ':''}
+              생성 {m.generation.completion_tokens}토큰 · 종료 {m.generation.finish_reason}
+              {m.generation.segments>1?` · 자동 이어쓰기 ${m.generation.segments}회`:''}
+            </div>}
+          </div>
         </div>)}
         {busy&&chat&&<div className="kwt-chat-wait"><LoaderCircle size={17} className="kwt-chat-spin"/> Gemma 응답 또는 이전 대화 요약 처리 중…</div>}
         <div ref={end}/>

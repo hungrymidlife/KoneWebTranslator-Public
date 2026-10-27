@@ -45,3 +45,9 @@
 .kwt-chat-memory span{margin-left:auto;color:#879cb5}
 .kwt-chat-summary{background:#111b29;border:1px solid #2d3a4f;border-radius:8px;padding:10px;white-space:pre-wrap;font-size:12px;color:#a9bed6;max-height:120px;overflow:auto}
 @media(max-width:780px){.kwt-chat-sidebar{width:160px}.kwt-chat-messages{padding:16px}.kwt-chat-compose{padding:12px}.kwt-chat-settings-grid{grid-template-columns:1fr}}
+
+/* KWT_CHAT_OUTPUT_FIX_V2_2_1 */
+.kwt-chat-message-body{max-width:min(740px,88%);min-width:0;display:flex;flex-direction:column;align-items:flex-start}
+.kwt-chat-message-body .kwt-chat-bubble{max-width:100%;box-sizing:border-box}
+.kwt-chat-generation{padding:4px 2px;color:#8c9cb2;font-size:11px;line-height:1.5}
+.kwt-chat-generation.warn{color:#ffc27c}
