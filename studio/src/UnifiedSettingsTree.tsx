@@ -15,7 +15,7 @@ type Runtime={
   translation:{max_region_count:number;max_source_chars:number;timeout_sec:number;top_k:number;top_p:number;min_p:number}
   chat:{context_reserve:number;auto_reply_margin:number;summary_batch_messages:number;summary_chunk_budget:number;summary_output_tokens:number;summary_max_chars:number;summary_previous_chars:number;timeout_sec:number;continue_limit:number}
   // KWT_UNIFIED_IMAGE_V1_5
-  typesetting:{lama_tile_size:number;lama_tile_context:number;typeset_min_font_size:number;typeset_max_font_size:number;typeset_padding_percent:number;typeset_line_height_ratio:number;output_image_quality:number;zip_compression_level:number}
+  typesetting:{lama_tile_size:number;lama_tile_context:number;typeset_min_font_size:number;typeset_max_font_size:number;typeset_padding_percent:number;typeset_line_height_ratio:number;output_image_quality:number;zip_compression_level:number;virtual_box_width_percent:number;virtual_box_height_percent:number}
 }
 type Existing={gemma_dir:string;prompt:string;temperature:number;max_tokens:number;ocr_mode:string;patches:number;confidence:number}
 type Props={
@@ -36,7 +36,7 @@ const DEFAULTS:Runtime={
   ocr:{pad_x_percent:12,pad_y_percent:8},
   translation:{max_region_count:20,max_source_chars:1200,timeout_sec:120,top_k:64,top_p:0.9,min_p:0.05},
   chat:{context_reserve:400,auto_reply_margin:512,summary_batch_messages:4,summary_chunk_budget:1150,summary_output_tokens:700,summary_max_chars:2200,summary_previous_chars:2000,timeout_sec:300,continue_limit:3},
-  typesetting:{lama_tile_size:768,lama_tile_context:72,typeset_min_font_size:8,typeset_max_font_size:72,typeset_padding_percent:4.5,typeset_line_height_ratio:1.24,output_image_quality:92,zip_compression_level:6},
+  typesetting:{lama_tile_size:768,lama_tile_context:72,typeset_min_font_size:8,typeset_max_font_size:72,typeset_padding_percent:4.5,typeset_line_height_ratio:1.24,output_image_quality:92,zip_compression_level:6,virtual_box_width_percent:140,virtual_box_height_percent:125},
 }
 const FIELDS=[
   {key:'context_size',label:'모델 컨텍스트 길이',min:2048,max:131072,step:1024},
@@ -254,6 +254,20 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
         <label>LaMa 타일 최대 길이 (px)<input type="number" min={512} max={1024} step={64} value={runtime.typesetting.lama_tile_size} disabled={loading||saving} onChange={e=>advancedChange('typesetting','lama_tile_size',Number(e.target.value))}/></label>
         <label>LaMa 타일 주변 문맥 (px)<input type="number" min={0} max={256} step={8} value={runtime.typesetting.lama_tile_context} disabled={loading||saving} onChange={e=>advancedChange('typesetting','lama_tile_context',Number(e.target.value))}/></label>
       </div>
+      {/* KWT_VIRTUAL_OCR_BOX_V1_8: editable Korean rectangle independent of OCR. */}
+      <h2>가상 한글 식질 영역 확대</h2>
+      <p className="ctl-description">일본어 OCR 원본 좌표와 LaMa 원문 제거 범위는 그대로 유지해. 한글이 들어갈 가상 박스만 OCR 중심 기준으로 확장해. 100%는 기존 OCR 크기, 140%는 OCR 너비의 1.4배야. 이미지 바깥으로는 확장되지 않아.</p>
+      <div className="kwt-tree-fields">
+        <label>가상 영역 가로 비율 ({runtime.typesetting.virtual_box_width_percent}%)
+          <input type="range" min={100} max={200} step={5} value={runtime.typesetting.virtual_box_width_percent} disabled={loading||saving} onChange={e=>advancedChange('typesetting','virtual_box_width_percent',Number(e.target.value))}/>
+          <input type="number" min={100} max={200} step={5} value={runtime.typesetting.virtual_box_width_percent} disabled={loading||saving} onChange={e=>advancedChange('typesetting','virtual_box_width_percent',Number(e.target.value))}/>
+        </label>
+        <label>가상 영역 세로 비율 ({runtime.typesetting.virtual_box_height_percent}%)
+          <input type="range" min={100} max={200} step={5} value={runtime.typesetting.virtual_box_height_percent} disabled={loading||saving} onChange={e=>advancedChange('typesetting','virtual_box_height_percent',Number(e.target.value))}/>
+          <input type="number" min={100} max={200} step={5} value={runtime.typesetting.virtual_box_height_percent} disabled={loading||saving} onChange={e=>advancedChange('typesetting','virtual_box_height_percent',Number(e.target.value))}/>
+        </label>
+      </div>
+      <p className="ctl-description">기본값: 가로 140% · 세로 125%. OpenCV 안전 영역 탐지에 성공하면 이를 우선하고, 영역이 좁아 글자를 그릴 수 없으면 가상 영역으로 재시도해. 말풍선 바깥으로 벗어날 가능성도 있으니 우선 작은 ZIP으로 검수해 줘.</p>
       <h2>자동 식질 및 검수 렌더링</h2>
       <div className="kwt-tree-fields">
         <label>자동 최소 글꼴 크기 (px)<input type="number" min={8} max={48} step={1} value={runtime.typesetting.typeset_min_font_size} disabled={loading||saving} onChange={e=>advancedChange('typesetting','typeset_min_font_size',Number(e.target.value))}/></label>
@@ -267,6 +281,7 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
         <label>JPEG·WebP 저장 품질<input type="number" min={60} max={100} step={1} value={runtime.typesetting.output_image_quality} disabled={loading||saving} onChange={e=>advancedChange('typesetting','output_image_quality',Number(e.target.value))}/></label>
         <label>ZIP 압축 수준<input type="number" min={0} max={9} step={1} value={runtime.typesetting.zip_compression_level} disabled={loading||saving} onChange={e=>advancedChange('typesetting','zip_compression_level',Number(e.target.value))}/></label>
       </div>
+      <p className="ctl-description">새 작업의 메타데이터에는 원본 OCR 박스, 가상 한글 박스, 실제 식질 박스 및 글자 범위를 별도로 보존해. 수동으로 고친 영역은 자동 조정하지 않아.</p>
       <p className="ctl-description">자동 처리 시작 시 프로필을 고정해 각 페이지 메타데이터에 기록해. 검수 화면에서 다시 그릴 때는 해당 기록을 재사용하므로, 저장 후 설정을 바꿔도 기존 페이지의 자동 레이아웃은 변하지 않아. 기존 페이지 메타데이터에 설정 기록이 없으면 현재 공통 설정을 사용해.</p>
       <p className="ctl-description">PNG는 무손실로 저장되고, 품질 수치는 JPEG·WebP에만 적용돼. 이미 완성된 ZIP은 설정 저장만으로 다시 압축되지 않아.</p>
     </section>}

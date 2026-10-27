@@ -116,22 +116,38 @@ def typeset(raw, regions, report=None, text_color_mode='auto', cache_dir=None, r
         # Retain existing luminance-based foreground selection.
         style = select_text_style(im, (x+pad, y+pad, max(1,w-2*pad), max(1,h-2*pad)), text_color_mode)
         style['stroke_color'] = '#000000' if style['text_color'] == '#ffffff' else '#ffffff'
-        # V15_BUBBLE_SAFE_LAYOUT: conservative mask-based correction; fallback is original bbox.
+        # KWT_VIRTUAL_OCR_BOX_V1_8: OCR removal bbox remains untouched.
         from bubble_safe_layout import propose_safe_bbox
-        layout_box, layout_reason = propose_safe_bbox(im, (x,y,w,h))
-        info = layout_and_draw(draw, translated, layout_box or (x,y,w,h), font_for, style, render_cfg=render_cfg)
-        if info is None and layout_box is not None:
-            # Revert if proposed safe area cannot fit the translated text.
-            info = layout_and_draw(draw, translated, (x,y,w,h), font_for, style, render_cfg=render_cfg)
-            layout_box = None
-            layout_reason = 'safe_layout_overflow_fallback'
+        from virtual_typesetting_box import virtual_bbox, drawn_bbox
+        ocr_box = [x,y,w,h]
+        virtual_box = virtual_bbox(ocr_box, im.size, render_cfg)
+        enlarged = virtual_box != ocr_box
+        # OpenCV sees the expanded candidate, NOT the raw Japanese OCR rectangle.
+        safe_box, layout_reason = propose_safe_bbox(im, virtual_box)
+        if enlarged and safe_box is not None:
+            # Reject an over-restrictive safe mask; it should not undo enlargement.
+            if safe_box[2] < w or safe_box[3] < h:
+                safe_box = None
+                layout_reason += '_too_small_for_ocr'
+        target_box = list(safe_box or virtual_box)
+        info = layout_and_draw(draw, translated, target_box, font_for, style, render_cfg=render_cfg)
+        if info is None and safe_box is not None:
+            # No invisible Korean: retry in the full page-clipped virtual area.
+            target_box = virtual_box
+            info = layout_and_draw(draw, translated, target_box, font_for, style, render_cfg=render_cfg)
+            layout_reason += '_fit_fallback'
         if info is not None:
             info['font_id'] = kwt_default_font_id()
-            info['layout_source'] = layout_reason if layout_box else 'ocr_bbox_fallback'
+            info['layout_source'] = ('virtual_ocr_bbox' if enlarged else 'ocr_bbox') + ('_bubble_safe' if target_box == safe_box else '_fallback')
             info['bubble_detection_reason'] = layout_reason
-            info['typesetting_bbox'] = list(layout_box or (x,y,w,h))
+            info['original_ocr_bbox'] = ocr_box
+            info['virtual_typesetting_bbox'] = virtual_box
+            info['typesetting_bbox'] = list(target_box)
+            info['rendered_text_bbox'] = drawn_bbox(target_box, info, im.size)
         if info is None:
-            placements.append({'region_id':region.get('id'), 'status':'text_overflow'})
+            placements.append({'region_id':region.get('id'), 'status':'text_overflow',
+                               'bbox':[x,y,w,h], 'virtual_typesetting_bbox':virtual_box,
+                               'typesetting_bbox':target_box, 'bubble_detection_reason':layout_reason})
             continue
         style['stroke_width'] = info['stroke_width']
         placements.append({'region_id':region.get('id'), 'bbox':[x,y,w,h],

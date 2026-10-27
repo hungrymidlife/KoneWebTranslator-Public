@@ -18,6 +18,9 @@ DEFAULTS = {
     'typeset_line_height_ratio': 1.24,
     'output_image_quality': 92,
     'zip_compression_level': 6,
+    # KWT_VIRTUAL_OCR_BOX_V1_8: separate OCR bbox and Korean layout bbox.
+    'virtual_box_width_percent': 140,
+    'virtual_box_height_percent': 125,
 }
 INTEGER_RANGES = {
     'lama_tile_size': (512, 1024),
@@ -26,6 +29,8 @@ INTEGER_RANGES = {
     'typeset_max_font_size': (8, 96),
     'output_image_quality': (60, 100),
     'zip_compression_level': (0, 9),
+    'virtual_box_width_percent': (100, 200),
+    'virtual_box_height_percent': (100, 200),
 }
 FLOAT_RANGES = {
     'typeset_padding_percent': (0.0, 15.0),
@@ -33,11 +38,13 @@ FLOAT_RANGES = {
 }
 
 def validate(value):
-    if not isinstance(value, dict) or set(value) != set(DEFAULTS):
+    # Old ZIP metadata can contain a full V1.5 profile without virtual boxes.
+    optional = {'virtual_box_width_percent', 'virtual_box_height_percent'}
+    if not isinstance(value, dict) or set(value) - set(DEFAULTS) or set(DEFAULTS) - set(value) - optional:
         raise ValueError('이미지/식질 설정의 키가 올바르지 않습니다.')
     normalized = {}
     for key, default in DEFAULTS.items():
-        item = value[key]
+        item = value.get(key, default)
         if key in INTEGER_RANGES:
             a, b = INTEGER_RANGES[key]
             if type(item) is not int or not a <= item <= b:

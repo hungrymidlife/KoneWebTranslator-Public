@@ -207,7 +207,10 @@ class Project:
             if typ.get('status') not in ('drawn', 'manual'):
                 continue
             base = typ.get('typesetting_bbox') or region.get('bbox') or [0, 0, 100, 80]
+            # KWT_VIRTUAL_OCR_BOX_V1_8: expose original, virtual, and rendered text boxes.
             layer = {'region_id': rid, 'ocr_bbox': region.get('bbox') or base,
+                     'virtual_bbox': typ.get('virtual_typesetting_bbox') or base,
+                     'rendered_text_bbox': typ.get('rendered_text_bbox'),
                      'bbox': list(base), 'text': str(region.get('translated_text') or typ.get('text') or ''),
                      'source_text': str(region.get('text') or ''), 'font_size': typ.get('font_size', 26),
                      'font_id': typ.get('font_id','system'),
