@@ -17,6 +17,34 @@ DEFAULT_MODEL = 'gemma4-12b-local'
 MAX_REGION_COUNT = 20
 MAX_SOURCE_CHARS = 1200
 
+# KWT_UNIFIED_ADVANCED_V1_3: per-request translation profile.
+RUNTIME_SETTINGS = Path(__file__).resolve().parent.parent / 'runtime_settings.json'
+def _kwt_translation_runtime():
+    defaults = {'max_region_count': MAX_REGION_COUNT, 'max_source_chars': MAX_SOURCE_CHARS,
+                'timeout_sec': 120, 'top_k': 64, 'top_p': 0.9, 'min_p': 0.05}
+    if not RUNTIME_SETTINGS.is_file():
+        return defaults
+    config = json.loads(RUNTIME_SETTINGS.read_text(encoding='utf-8-sig'))
+    if not isinstance(config, dict) or config.get('schema_version') != 1:
+        raise TranslationError('Invalid runtime settings')
+    group = config.get('translation', {})
+    if not isinstance(group, dict):
+        raise TranslationError('Invalid translation settings')
+    from math import isfinite
+    limits = {'max_region_count': (1, 20), 'max_source_chars': (100, 1200),
+              'timeout_sec': (30, 600), 'top_k': (0, 200)}
+    for key, value in group.items():
+        if key not in defaults:
+            raise TranslationError('Unknown translation setting: '+key)
+        if key in limits:
+            lo, hi = limits[key]
+            if type(value) is not int or not lo <= value <= hi:
+                raise TranslationError('Invalid integer setting: '+key)
+        elif isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value) or not (0.01 if key=='top_p' else 0) <= value <= 1:
+            raise TranslationError('Invalid probability setting: '+key)
+        defaults[key] = value
+    return defaults
+
 
 class TranslationError(Exception):
     pass
@@ -193,16 +221,19 @@ def load_translation_settings():
         raise TranslationError(f'로컬 번역 설정 파일 오류: {exc}') from exc
 
 
-def get_config_hash():
-    cfg = load_translation_settings()
+def get_config_hash(_runtime=None, _legacy=None):
+    cfg = dict(_legacy) if _legacy is not None else load_translation_settings()
+    cfg['request_runtime'] = _runtime if _runtime is not None else _kwt_translation_runtime()  # cache identity
     normalized = json.dumps(cfg, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:20]
 
 
 def translate_regions(regions, model=None, base_url=None, _single_retry=False):
     """Translate at most 20 regions, preserving exactly the provided IDs."""
-    if not isinstance(regions, list) or not 1 <= len(regions) <= MAX_REGION_COUNT:
-        raise TranslationError(f'한 번의 로컬 번역 요청은 1~{MAX_REGION_COUNT}개 영역만 허용합니다.')
+    advanced = _kwt_translation_runtime()
+    maximum = advanced['max_region_count']
+    if not isinstance(regions, list) or not 1 <= len(regions) <= maximum:
+        raise TranslationError(f'한 번의 로컬 번역 요청은 1~{maximum}개 영역만 허용합니다.')
     model = normalize_model(model)
     base_url = normalize_url(base_url)
     ids = []
@@ -224,19 +255,20 @@ def translate_regions(regions, model=None, base_url=None, _single_retry=False):
             {'role': 'user', 'content': json.dumps({'regions': items}, ensure_ascii=False)}
         ],
         'temperature': cfg['temperature'],
+        'top_k': advanced['top_k'], 'top_p': advanced['top_p'], 'min_p': advanced['min_p'],
         'stream': False,
         'chat_template_kwargs': {'enable_thinking': False},
         'max_tokens': cfg['max_tokens'] or max(320, min(2304, 180 + sum(len(v['source']) for v in items) * 3)),
         'response_format': {'type': 'json_object'},
     }
     try:
-        result = _request(base_url, '/chat/completions', payload, timeout=120)
+        result = _request(base_url, '/chat/completions', payload, timeout=advanced['timeout_sec'])
     except TranslationError as exc:
         # Some custom llama.cpp builds do not support response_format.
         if 'HTTP 400:' not in str(exc):
             raise
         payload.pop('response_format')
-        result = _request(base_url, '/chat/completions', payload, timeout=120)
+        result = _request(base_url, '/chat/completions', payload, timeout=advanced['timeout_sec'])
 
     try:
         choice = result['choices'][0]
@@ -263,15 +295,17 @@ def translate_regions(regions, model=None, base_url=None, _single_retry=False):
         if set(mapping) != set(ids):
             raise TranslationError('재번역 이후에도 번역 영역 ID가 일치하지 않습니다.')
     return mapping, {'model': str(result.get('model') or model), 'usage': usage,
-                     'provider': 'local', 'base_url': base_url, 'config_hash': get_config_hash()}
+                     'provider': 'local', 'base_url': base_url, 'config_hash': get_config_hash(advanced, cfg)}
 
 
 def build_batches(regions):
     """Bound text and region count for llama.cpp's configured 4K context."""
+    advanced = _kwt_translation_runtime()  # Snapshot batch policy for this iteration.
+    max_regions, max_chars = advanced['max_region_count'], advanced['max_source_chars']
     group, count = [], 0
     for r in regions:
         length = len(str(r['text']))
-        if group and (len(group) >= MAX_REGION_COUNT or count + length > MAX_SOURCE_CHARS):
+        if group and (len(group) >= max_regions or count + length > max_chars):
             yield group
             group, count = [], 0
         group.append(r)

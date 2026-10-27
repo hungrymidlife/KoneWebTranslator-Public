@@ -9,6 +9,9 @@ type Runtime={
   schema_version:number
   gemma:{context_size:number;gpu_layers:number;flash_attention:'on'|'off'|'auto';parallel_slots:number;top_k:number;top_p:number;min_p:number;repeat_penalty:number}
   pipeline:{batch_pages:number;batch_raw_mb:number;ocr_workers:number;translation_workers:number;zip_workers:number} // KWT_UNIFIED_WORKERS_V1_2
+  // KWT_UNIFIED_ADVANCED_V1_3
+  ocr:{pad_x_percent:number;pad_y_percent:number}
+  translation:{max_region_count:number;max_source_chars:number;timeout_sec:number;top_k:number;top_p:number;min_p:number}
 }
 type Existing={gemma_dir:string;prompt:string;temperature:number;max_tokens:number;ocr_mode:string;patches:number;confidence:number}
 type Props={
@@ -26,6 +29,8 @@ const DEFAULTS:Runtime={
   schema_version:1,
   gemma:{context_size:8192,gpu_layers:99,flash_attention:'on',parallel_slots:1,top_k:64,top_p:0.9,min_p:0.05,repeat_penalty:1.1},
   pipeline:{batch_pages:3,batch_raw_mb:22,ocr_workers:1,translation_workers:1,zip_workers:1},
+  ocr:{pad_x_percent:12,pad_y_percent:8},
+  translation:{max_region_count:20,max_source_chars:1200,timeout_sec:120,top_k:64,top_p:0.9,min_p:0.05},
 }
 const FIELDS=[
   {key:'context_size',label:'모델 컨텍스트 길이',min:2048,max:131072,step:1024},
@@ -40,8 +45,8 @@ const PAGE_META:Record<SettingsGroup,{label:string;hint:string}>={
   overview:{label:'통합 설정 개요',hint:'왼쪽 환경 설정에서 항목을 선택하면 해당 설정만 표시돼.'},
   gemma:{label:'AI 서버 실행',hint:'Gemma 시작 시 반영 · 실행 중이라면 재시작 필요'},
   pipeline:{label:'자동 ZIP 처리',hint:'다음 ZIP 자동 처리 작업부터 반영'},
-  ocr:{label:'OCR / 텍스트 검출',hint:'기존 OCR 설정과 공유 · 새로운 검출 작업부터 반영'},
-  translation:{label:'번역 설정',hint:'기존 번역 프로필과 공유 · 다음 번역 요청부터 반영'},
+  ocr:{label:'OCR / 텍스트 검출',hint:'기존 OCR 설정 및 공통 여백 · 새로운 검출 작업부터 반영'},
+  translation:{label:'번역 설정',hint:'기존 번역 프로필 및 요청별 고급 옵션 · 다음 번역 요청부터 반영'},
   chat:{label:'로컬 채팅 / 기억',hint:'기존 로컬 채팅 설정 유지'},
   typesetting:{label:'이미지 처리 / 식질',hint:'기존 검수·식질 설정 유지'},
 }
@@ -65,18 +70,24 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
   const pipelineChange=(key:keyof Runtime['pipeline'],value:number)=>{
     setRuntime(prev=>({...prev,pipeline:{...prev.pipeline,[key]:value}}));setDirty(true);setNotice('')
   }
+  const advancedChange=(section:'ocr'|'translation',key:string,value:number)=>{
+    setRuntime(prev=>({...prev,[section]:{...prev[section],[key]:value}}));setDirty(true);setNotice('')
+  }
   const save=async()=>{
     if(saving||loading)return
     setSaving(true);setError('');setNotice('')
     try{
       const result=await api<{values:Runtime}>('/api/manager/runtime-settings',runtime)
       setRuntime(result.values);setDirty(false)
-      setNotice('저장 완료. Gemma/OCR 서버 실행 옵션은 서버 재시작 후, ZIP 병렬 수는 다음 작업부터 적용돼.')
+      setNotice('통합 설정 저장 완료. Gemma 실행 옵션·OCR 작업자 수는 서버 재시작, OCR 여백과 번역 옵션은 새 요청부터 적용돼.')
     }catch(e){setError(e instanceof Error?e.message:String(e))}
     finally{setSaving(false)}
   }
-  const reset=()=>{setRuntime(JSON.parse(JSON.stringify(defaults)) as Runtime);setDirty(true);setNotice('기본값을 입력했어. 저장 버튼을 눌러야 적용돼.')}
-  const runtimePage=selectedGroup==='gemma'||selectedGroup==='pipeline'
+  const reset=()=>{
+    if(selectedGroup==='overview'||selectedGroup==='chat'||selectedGroup==='typesetting')return
+    setRuntime(prev=>({...prev,[selectedGroup]:{...defaults[selectedGroup]}}));setDirty(true);setNotice('현재 설정 그룹 기본값을 입력했어. 저장해야 반영돼.')
+  }
+  const runtimePage=['gemma','pipeline','ocr','translation'].includes(selectedGroup)
   return <div className="kwt-settings-tree kwt-settings-page">
     <section className="control-card kwt-settings-page-intro">
       <p className="kwt-settings-breadcrumb">환경 설정 / {PAGE_META[selectedGroup].label}</p>
@@ -130,7 +141,13 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
         <label>Hayai 패치 크기<select value={legacy.patches} onChange={e=>updateLegacy({patches:Number(e.target.value)})}><option value={256}>256</option><option value={384}>384</option><option value={512}>512</option></select></label>
         <label>텍스트 검출 신뢰도<input type="number" min={0.05} max={0.9} step={0.01} value={legacy.confidence} onChange={e=>updateLegacy({confidence:Number(e.target.value)})}/></label>
       </div>
-      <div className="kwt-tree-bottom"><span>기존 OCR 설정 파일과 동일한 값이야.</span><button className="primary" disabled={!ready} onClick={()=>saveLegacy('ocr')}>OCR 설정 저장</button></div>
+      <p className="ctl-description">OCR 인식 영역 여백은 아래 통합 설정 저장으로 적용되고, 패치 크기·검출 신뢰도는 기존 OCR 설정 저장을 사용해.</p>
+      {/* KWT_UNIFIED_ADVANCED_V1_3: effective on NEW jobs, no OCR restart */}
+      <div className="kwt-tree-fields">
+        <label>OCR 좌우 여백 (각 방향 %)<input type="number" min={0} max={40} step={1} value={runtime.ocr.pad_x_percent} disabled={loading} onChange={e=>advancedChange('ocr','pad_x_percent',Number(e.target.value))}/></label>
+        <label>OCR 상하 여백 (각 방향 %)<input type="number" min={0} max={40} step={1} value={runtime.ocr.pad_y_percent} disabled={loading} onChange={e=>advancedChange('ocr','pad_y_percent',Number(e.target.value))}/></label>
+      </div>
+      <div className="kwt-tree-bottom"><span>값이 지정되지 않은 새 OCR 요청에 공통 여백이 적용돼. 개별 요청이 지정한 여백은 우선돼.</span><button className="primary" disabled={!ready} onClick={()=>saveLegacy('ocr')}>기존 OCR 설정 저장</button></div>
     </section>}
 
     {selectedGroup==='translation'&&<section className="control-card settings-form">
@@ -139,7 +156,17 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
         <label>Temperature<input type="number" min={0} max={2} step={0.05} value={legacy.temperature} onChange={e=>updateLegacy({temperature:Number(e.target.value)})}/></label>
         <label>최대 출력 토큰 (0 = 자동)<input type="number" min={0} max={2304} step={1} value={legacy.max_tokens} onChange={e=>updateLegacy({max_tokens:Number(e.target.value)})}/></label>
       </div>
-      <div className="kwt-tree-bottom"><span>요청별 샘플링 및 실패 재시도 정책은 후속 단계야.</span><button className="primary" disabled={!ready} onClick={()=>saveLegacy('translation')}>번역 설정 저장</button></div>
+      {/* KWT_UNIFIED_ADVANCED_V1_3: translation batch/request settings */}
+      <div className="kwt-tree-fields">
+        <label>번역 영역 묶음 최대 개수<input type="number" min={1} max={20} step={1} value={runtime.translation.max_region_count} disabled={loading} onChange={e=>advancedChange('translation','max_region_count',Number(e.target.value))}/></label>
+        <label>번역 묶음 최대 원문 글자<input type="number" min={100} max={1200} step={50} value={runtime.translation.max_source_chars} disabled={loading} onChange={e=>advancedChange('translation','max_source_chars',Number(e.target.value))}/></label>
+        <label>번역 요청 타임아웃 (초)<input type="number" min={30} max={600} step={10} value={runtime.translation.timeout_sec} disabled={loading} onChange={e=>advancedChange('translation','timeout_sec',Number(e.target.value))}/></label>
+        <label>번역 요청별 Top-K<input type="number" min={0} max={200} step={1} value={runtime.translation.top_k} disabled={loading} onChange={e=>advancedChange('translation','top_k',Number(e.target.value))}/></label>
+        <label>번역 요청별 Top-P<input type="number" min={0.01} max={1} step={0.01} value={runtime.translation.top_p} disabled={loading} onChange={e=>advancedChange('translation','top_p',Number(e.target.value))}/></label>
+        <label>번역 요청별 Min-P<input type="number" min={0} max={1} step={0.01} value={runtime.translation.min_p} disabled={loading} onChange={e=>advancedChange('translation','min_p',Number(e.target.value))}/></label>
+      </div>
+      <p className="ctl-description">통합 설정은 상단 '통합 설정 저장'으로 저장해. 기존 프롬프트와 Temperature/출력 토큰은 아래 '기존 번역 설정 저장' 버튼으로 별도 저장해.</p>
+      <div className="kwt-tree-bottom"><span>모든 설정은 다음 새 번역 요청부터 적용돼. 실패 후 재번역 복구는 기존과 동일하게 유지해.</span><button className="primary" disabled={!ready} onClick={()=>saveLegacy('translation')}>기존 번역 설정 저장</button></div>
     </section>}
 
     {selectedGroup==='chat'&&<section className="control-card">

@@ -37,6 +37,26 @@ ocr_lock = threading.Lock()
 OCR_MODE_SETTINGS = ROOT / 'hayai_ocr_settings.json'
 WINDOWS_OCR_THRESHOLD = 3  # advisory score; no automatic replacement
 
+# KWT_UNIFIED_ADVANCED_V1_3: snapshot effective OCR padding at job acceptance.
+def _kwt_resolve_padding(x, y):
+    if x is not None and y is not None:
+        return x, y
+    path = ROOT.parent / 'runtime_settings.json'
+    padding = {'pad_x_percent': 12.0, 'pad_y_percent': 8.0}
+    if path.is_file():
+        settings = json.loads(path.read_text(encoding='utf-8-sig'))
+        group = settings.get('ocr', {})
+        if not isinstance(group, dict):
+            raise ValueError('OCR runtime settings invalid')
+        for key in padding:
+            if key in group:
+                value = group[key]
+                if isinstance(value, bool) or not isinstance(value, (float, int)) or not 0 <= value <= 40:
+                    raise ValueError('Invalid OCR padding: '+key)
+                padding[key] = float(value)
+    return (padding['pad_x_percent'] if x is None else x,
+            padding['pad_y_percent'] if y is None else y)
+
 class ImageItem(BaseModel):
     index: int
     url: str = ''
@@ -48,8 +68,8 @@ class Batch(BaseModel):
     source_url: str = ''
     selector: str = ''
     images: list[ImageItem] = Field(min_length=1, max_length=MAX_BATCH)
-    pad_x_percent: float = Field(default=12, ge=0, le=40)
-    pad_y_percent: float = Field(default=8, ge=0, le=40)
+    pad_x_percent: float | None = Field(default=None, ge=0, le=40)  # KWT_UNIFIED_ADVANCED_V1_3
+    pad_y_percent: float | None = Field(default=None, ge=0, le=40)
 
 @app.middleware('http')
 async def local_only(request: Request, call_next):
@@ -370,12 +390,13 @@ def find_cached_job(source_url: str, image_urls: list[str], pad_x_percent: float
 class CacheLookup(BaseModel):
     source_url: str = ''
     image_urls: list[str] = Field(default_factory=list, max_length=MAX_BATCH)
-    pad_x_percent: float = Field(default=12, ge=0, le=40)
-    pad_y_percent: float = Field(default=8, ge=0, le=40)
+    pad_x_percent: float | None = Field(default=None, ge=0, le=40)  # KWT_UNIFIED_ADVANCED_V1_3
+    pad_y_percent: float | None = Field(default=None, ge=0, le=40)
 
 @app.post('/api/v1/cache/lookup')
 def cache_lookup(payload: CacheLookup):
-    found = find_cached_job(payload.source_url, payload.image_urls, payload.pad_x_percent, payload.pad_y_percent)
+    pad_x, pad_y = _kwt_resolve_padding(payload.pad_x_percent, payload.pad_y_percent)
+    found = find_cached_job(payload.source_url, payload.image_urls, pad_x, pad_y)
     return {'found': found is not None, 'job': found}
 
 @app.post('/api/v1/images/batch', status_code=202)
@@ -395,9 +416,10 @@ def batch_receive(payload: Batch):
             raise HTTPException(422, f'Invalid image index {item.index}: {exc}') from exc
     job_id = uuid.uuid4().hex[:16]
     cfg = current_ocr_settings()
+    pad_x, pad_y = _kwt_resolve_padding(payload.pad_x_percent, payload.pad_y_percent)
     with lock:
-        jobs[job_id] = {'ocr_settings': cfg, 'ocr_profile': ocr_identity(cfg), 'job_id': job_id, 'status': 'queued', 'total': len(decoded), 'completed': 0, 'source_url': payload.source_url, 'selector': payload.selector, 'results': [], 'created_at': datetime.now(timezone.utc).isoformat(), 'output_dir': str(DATA.resolve()), 'pad_x_percent': payload.pad_x_percent, 'pad_y_percent': payload.pad_y_percent}
-    executor.submit(process_job, job_id, decoded, payload.pad_x_percent, payload.pad_y_percent)
+        jobs[job_id] = {'ocr_settings': cfg, 'ocr_profile': ocr_identity(cfg), 'job_id': job_id, 'status': 'queued', 'total': len(decoded), 'completed': 0, 'source_url': payload.source_url, 'selector': payload.selector, 'results': [], 'created_at': datetime.now(timezone.utc).isoformat(), 'output_dir': str(DATA.resolve()), 'pad_x_percent': pad_x, 'pad_y_percent': pad_y}
+    executor.submit(process_job, job_id, decoded, pad_x, pad_y)
     return {'accepted': len(decoded), 'job_id': job_id, 'status': 'queued', 'status_url': f'/api/v1/jobs/{job_id}'}
 
 class ManualWindowsOCR(BaseModel):

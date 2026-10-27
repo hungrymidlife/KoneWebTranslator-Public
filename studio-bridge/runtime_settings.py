@@ -23,6 +23,10 @@ DEFAULTS = {
     },
     'pipeline': {'batch_pages': 3, 'batch_raw_mb': 22,  # KWT_UNIFIED_WORKERS_V1_2
                  'ocr_workers': 1, 'translation_workers': 1, 'zip_workers': 1},
+    # KWT_UNIFIED_ADVANCED_V1_3: values used by new OCR jobs and translation requests.
+    'ocr': {'pad_x_percent': 12.0, 'pad_y_percent': 8.0},
+    'translation': {'max_region_count': 20, 'max_source_chars': 1200, 'timeout_sec': 120,
+                    'top_k': 64, 'top_p': 0.9, 'min_p': 0.05},
 }
 
 INTEGER_RULES = {
@@ -35,11 +39,19 @@ INTEGER_RULES = {
     ('pipeline', 'ocr_workers'): (1, 2),
     ('pipeline', 'translation_workers'): (1, 4),
     ('pipeline', 'zip_workers'): (1, 2),
+    ('translation', 'max_region_count'): (1, 20),
+    ('translation', 'max_source_chars'): (100, 1200),
+    ('translation', 'timeout_sec'): (30, 600),
+    ('translation', 'top_k'): (0, 200),
 }
 FLOAT_RULES = {
     ('gemma', 'top_p'): (0.01, 1.0),
     ('gemma', 'min_p'): (0.0, 1.0),
     ('gemma', 'repeat_penalty'): (1.0, 2.0),
+    ('ocr', 'pad_x_percent'): (0.0, 40.0),
+    ('ocr', 'pad_y_percent'): (0.0, 40.0),
+    ('translation', 'top_p'): (0.01, 1.0),
+    ('translation', 'min_p'): (0.0, 1.0),
 }
 
 
@@ -64,16 +76,18 @@ def normalize(value):
     """Accept only schema 1 with complete validated groups; preserve no unknown keys."""
     if not isinstance(value, dict) or type(value.get('schema_version')) is not int or value.get('schema_version') != 1:
         raise ValueError('지원되지 않는 runtime_settings.json schema_version입니다.')
-    if set(value) != set(DEFAULTS):
+    # KWT_UNIFIED_ADVANCED_V1_3: existing V1/V1.2 JSON lacks new groups.
+    old_groups = {'gemma', 'pipeline', 'schema_version'}
+    if set(value) - set(DEFAULTS) or old_groups - set(value):
         raise ValueError('통합 설정 상위 필드가 누락되었거나 알 수 없는 필드가 있습니다.')
     result = copy.deepcopy(DEFAULTS)
-    for section in ('gemma', 'pipeline'):
-        data = value.get(section)
+    for section in ('gemma', 'pipeline', 'ocr', 'translation'):
+        data = value.get(section, {})
         if not isinstance(data, dict):
             raise ValueError(f'{section} 설정이 유효하지 않습니다.')
-        # KWT_UNIFIED_WORKERS_V1_2: old V1 JSONs may omit the three new worker keys.
         missing = set(DEFAULTS[section]) - set(data)
-        legacy_keys = {'ocr_workers', 'translation_workers', 'zip_workers'} if section == 'pipeline' else set()
+        legacy_keys = ({'ocr_workers','translation_workers','zip_workers'} if section == 'pipeline'
+                       else set(DEFAULTS[section]) if section in ('ocr','translation') else set())
         if set(data) - set(DEFAULTS[section]) or missing - legacy_keys:
             raise ValueError(f'{section} 설정 항목이 누락되었거나 알 수 없는 항목이 있습니다.')
         for key, item in data.items():
