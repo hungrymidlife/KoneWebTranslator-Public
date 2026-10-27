@@ -34,6 +34,7 @@ BASE = Path(__file__).resolve().parent.parent
 TRANS = BASE / 'local-trans'
 sys.path.insert(0, str(TRANS))
 from render_settings import load_render_settings  # KWT_UNIFIED_IMAGE_V1_5
+from chat_attachments import upload as kwt_chat_upload  # KWT_CHAT_ATTACH_V2_3
 # KWT_STUDIO_FONTS_V1_7_0
 from font_library import (list_fonts as kwt_list_fonts, register_bytes as kwt_register_font,
                           register_paths as kwt_import_fonts, select_default as kwt_font_default,
@@ -527,7 +528,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin', origin)
             self.send_header('Vary','Origin')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-KWT-Studio, X-KWT-Extension-Key, X-KWT-Font-Name')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-KWT-Studio, X-KWT-Extension-Key, X-KWT-Font-Name, X-KWT-Chat-Id, X-KWT-Chat-Filename')
 
     def _send(self, status, data, content_type='application/json; charset=utf-8'):
         raw = json.dumps(data, ensure_ascii=False).encode('utf-8') if isinstance(data, (dict,list)) else data
@@ -640,6 +641,18 @@ class Handler(BaseHTTPRequestHandler):
                 if not name or len(name)>250:
                     raise ValueError('글꼴 파일명이 올바르지 않습니다.')
                 return self._send(200,kwt_register_font(name,self.rfile.read(length)))
+            if path=='/api/chat/attachment':
+                from urllib.parse import unquote
+                length=int(self.headers.get('Content-Length','0'))
+                if not 0 < length <= 64*1024*1024:
+                    raise ValueError('첨부 파일은 최대 64MB입니다.')
+                cid=self.headers.get('X-KWT-Chat-Id','')
+                # A valid conversation must exist before accepting its bytes.
+                from chat_service import _read as kwt_chat_read, _lock as kwt_chat_lock
+                with kwt_chat_lock(cid):
+                    kwt_chat_read(cid)
+                    result=kwt_chat_upload(cid,unquote(self.headers.get('X-KWT-Chat-Filename','')),self.rfile.read(length))
+                return self._send(200,result)
             body=self._body()
             if path.startswith('/api/chat/'):
                 return self._send(200,chat_post(path,body))

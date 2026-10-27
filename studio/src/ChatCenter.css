@@ -51,3 +51,15 @@
 .kwt-chat-message-body .kwt-chat-bubble{max-width:100%;box-sizing:border-box}
 .kwt-chat-generation{padding:4px 2px;color:#8c9cb2;font-size:11px;line-height:1.5}
 .kwt-chat-generation.warn{color:#ffc27c}
+/* KWT_CHAT_ATTACH_V2_3 */
+.kwt-chat-file-input{display:none}
+.kwt-chat-file-list{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0 9px;max-width:100%}
+.kwt-chat-file{display:inline-flex;align-items:center;gap:5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 8px;border:1px solid #39526e;border-radius:7px;color:#cedefa;background:#1a2b3d;font-size:11px}
+.kwt-chat-file button{display:inline-flex;align-items:center;background:transparent;border:0;color:#c4d0e4;cursor:pointer;padding:0}
+.kwt-chat-file-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:9px;font-size:11px;color:#9eafc5}
+.kwt-chat-file-toolbar>button,.kwt-chat-download button{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;color:#c8d7ec;background:#202e41;border:1px solid #40516a;border-radius:7px;cursor:pointer}
+.kwt-chat-file-toolbar>button:disabled{opacity:.4;cursor:default}
+.kwt-chat-file-toolbar label{display:inline-flex;align-items:center;gap:6px;margin-left:auto}
+.kwt-chat-file-toolbar select{border-radius:5px;border:1px solid #425371;background:#132032;color:#e4eaf5}
+.kwt-chat-download{display:flex;justify-content:flex-start;margin-top:5px}
+.kwt-chat-download button{font-size:10px}
