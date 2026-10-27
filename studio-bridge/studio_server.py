@@ -22,6 +22,8 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 from PIL import Image, ImageDraw, ImageFont
+from installer_service import get as installer_get, post as installer_post  # KWT_STUDIO_INSTALLER_V2_0_0
+from chrome_extension_install import open_for_user as kwt_open_extension_guide  # KWT_CHROME_EXTENSION_GUIDE_V2_0_2
 from manager_service import handle_get as studio_manager_get, handle_post as studio_manager_post  # KWT_UNIFIED_V1
 from extension_service import get as extension_get, post as extension_post, EXT_RE  # KWT_EXT_SYNC_V1_3
 
@@ -532,6 +534,14 @@ class Handler(BaseHTTPRequestHandler):
             uri=urlparse(self.path); path=uri.path; q={k:v[0] for k,v in parse_qs(uri.query).items()}
             if path.startswith('/api/extension/'):
                 return self._send(200, extension_get(path,q,self.headers))
+            # Installer is allowed only from the Studio UI; never expose unauthenticated install controls.
+            if path.startswith('/api/installer/'):
+                if self.headers.get('X-KWT-Studio')!='1':
+                    return self._send(403,{'error':'Studio request header required'})
+                origin=self.headers.get('Origin','')
+                if origin and origin not in ('http://localhost:1420','http://127.0.0.1:1420','tauri://localhost','http://tauri.localhost','https://tauri.localhost'):
+                    return self._send(403,{'error':'Origin is not allowed'})
+                return self._send(200,installer_get(path))
             if path.startswith('/api/manager/'):
                 if self.headers.get('X-KWT-Studio')!='1':
                     return self._send(403,{'error':'Studio request header required'})
@@ -593,6 +603,8 @@ class Handler(BaseHTTPRequestHandler):
             path=urlparse(self.path).path
             if path=='/api/bridge/restart':
                 return self._send(200,_restart_bridge_safely())
+            if path=='/api/installer/chrome-action':
+                return self._send(200,kwt_open_extension_guide(self._body()))
             if path=='/api/fonts/upload':
                 from urllib.parse import unquote
                 length=int(self.headers.get('Content-Length','0'))
@@ -614,6 +626,10 @@ class Handler(BaseHTTPRequestHandler):
             if path=='/api/fonts/import-paths':return self._send(200,kwt_import_fonts(body.get('paths')))
             if path.startswith('/api/extension/studio/'):
                 return self._send(200,extension_post(path,body,self.headers))
+            if path.startswith('/api/installer/'):
+                with queue_lock:
+                    processing=active_batch
+                return self._send(200,installer_post(path,body,processing=processing))
             if path.startswith('/api/manager/'):
                 return self._send(200,studio_manager_post(path,body))
             if path=='/api/scan':

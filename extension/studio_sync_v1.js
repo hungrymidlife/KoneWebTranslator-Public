@@ -24,6 +24,24 @@
       return out;
     }finally{clearTimeout(timeout)}
   }
+  // KWT_EXTENSION_PRESENCE_V2_0_3: authenticated activity marker from successful OCR requests.
+  // The Chrome worker may sleep; no extra Chrome permissions or background polling.
+  let lastActivityAttempt=0;
+  async function notifyActivity(){
+    const now=Date.now();
+    if(now-lastActivityAttempt<30000)return;
+    lastActivityAttempt=now;
+    try{
+      const stored=await chrome.storage.local.get({[TOKEN]:''});
+      if(!stored[TOKEN])return;
+      await call('/api/extension/client/activity',{extension_id:chrome.runtime.id},stored[TOKEN]);
+    }catch(err){
+      // OCR success is independent of Studio presence tracking.
+      console.debug('[KWT Studio] Presence update skipped:',String(err));
+    }
+  }
+  globalThis.kwtStudioActivityV2=()=>{void notifyActivity()};
+
   async function sendSnapshot(){
     const stored=await chrome.storage.local.get({...DEFAULTS,[TOKEN]:'',[REV]:0});
     if(!stored[TOKEN])return {paired:false};

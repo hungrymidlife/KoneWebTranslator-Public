@@ -315,3 +315,44 @@ canvas,
 .document-toolbar .view-switch { flex: 0 0 auto; }
 .document-toolbar .view-switch button { flex: 0 0 auto; white-space: nowrap; word-break: keep-all; }
 .document-toolbar .view-switch .kwt-focus-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 122px; white-space: nowrap; word-break: keep-all; border-left: 1px solid #3c485b; }
+
+/* KWT_STUDIO_INSTALLER_V2_0_0 */
+.kwt-installer { padding-bottom: 36px; }
+.kwt-install-intro {display:flex;flex-wrap:wrap;column-gap:32px;row-gap:14px;margin-bottom:18px}
+.kwt-install-intro>div{display:flex;flex-direction:column;gap:7px;min-width:220px;max-width:100%}
+.kwt-install-intro code{white-space:normal;overflow-wrap:anywhere;color:#99d7fa}
+.kwt-install-intro>p{width:100%;margin:3px 0;color:#91a9be;line-height:1.7}
+.kwt-installer-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:18px 0 14px}
+.kwt-installer-heading h2{font-size:17px;margin:0}
+.kwt-installer-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:14px}
+.kwt-installer-item{min-width:0;display:flex;flex-direction:column;gap:14px;justify-content:space-between}
+.kwt-installer-item-heading{display:flex;align-items:flex-start;gap:12px}
+.kwt-installer-icon{flex:0 0 37px;height:37px;display:grid;place-items:center;border-radius:8px;background:#263e53;color:#85c9ec}
+.kwt-installer-item-name{flex:1;min-width:0}.kwt-installer-item-name strong{font-size:14px;color:#e9f2fb}
+.kwt-installer-item-name p{color:#93a9be;font-size:12px;line-height:1.6;margin:5px 0 0}
+.kwt-install-ok{color:#51cfab;font-size:12px;white-space:nowrap}.kwt-install-warning{color:#e8ad69;font-size:12px;white-space:nowrap}
+.kwt-installer-item-foot{border-top:1px solid #2d3948;padding-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.kwt-installer-item-foot>span{color:#92a4b8;font-size:11px;max-width:100%}
+.kwt-installer-buttons{display:flex;gap:8px;align-items:center}.kwt-installer-buttons button{white-space:nowrap;padding:8px 12px}
+.kwt-installer-job{margin-top:20px}.kwt-installer-job-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.kwt-installer-job-head h2{display:flex;align-items:center;gap:8px;font-size:16px;margin:0}
+.kwt-installer-job>p{line-height:1.7;color:#a6bad0}
+.kwt-installer-log{white-space:pre-wrap;overflow-wrap:anywhere;max-height:300px;overflow-y:auto;background:#0b131c;border:1px solid #2c4055;border-radius:8px;padding:15px;color:#cee0ed;font-size:11px;line-height:1.65}
+.kwt-installer-small{font-size:11px!important}.kwt-installer-info{margin-top:20px}.kwt-installer-info p{color:#a0b4c8;font-size:12px;line-height:1.7}
+@keyframes kwt-setup-spin {to{transform:rotate(360deg)}}.kwt-spinner{animation:kwt-setup-spin 1s linear infinite}
+
+/* KWT_CHROME_EXTENSION_GUIDE_V2_0_2: installer-only browser extension setup guide */
+.kwt-chrome-install{margin:18px 0 22px;display:flex;flex-direction:column;gap:13px}
+.kwt-chrome-install-header{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;flex-wrap:wrap}
+.kwt-chrome-install-header h2{margin:0;font-size:16px;color:#e8f2fc}
+.kwt-chrome-install-header p{color:#9fb2c8;line-height:1.65;margin:7px 0 0}
+.kwt-chrome-install-steps{padding-left:23px;margin:3px 0 4px;color:#bbcede;line-height:1.85}
+.kwt-chrome-install-steps li{padding-left:4px;margin-bottom:5px}
+.kwt-chrome-install-steps strong{color:#e6f2fc}
+.kwt-chrome-install-steps code,.kwt-chrome-install-path code{overflow-wrap:anywhere;color:#9bd6f5}
+.kwt-chrome-install-path{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:11px 12px;border:1px solid #324458;border-radius:8px;background:#101923}
+.kwt-chrome-install-path span{color:#9baec3;white-space:nowrap}
+.kwt-chrome-install-buttons{display:flex;flex-wrap:wrap;gap:9px}
+.kwt-chrome-install-buttons button{display:inline-flex;align-items:center;gap:7px;min-height:36px}
+.kwt-chrome-notice{margin:0;color:#57d9b3}
+.kwt-chrome-pair-status{margin:0;color:#b2cadf;line-height:1.6}

@@ -8,7 +8,7 @@ type Rule={id:string;name:string;pattern:string;selector:string;enabled:boolean;
 type Settings={rules:Rule[];serverUrl:string;kwtLocalUrl:string;kwtLocalModel:string;
   kwtSiteOriginsV3:string[];kwtImageHostOriginsV3:string[];kwtMissingImageHostsV1:string[]}
 type SyncState={paired:boolean;extension_id:string;revision:number;settings:Settings;connected:boolean;
-  last_seen:number;granted_origins:string[];pair_code_active:boolean}
+  last_seen:number;last_sync?:number;last_activity?:number;granted_origins:string[];pair_code_active:boolean}
 const blank:Settings={rules:[],serverUrl:'http://127.0.0.1:8765',kwtLocalUrl:'http://127.0.0.1:18080/v1',
   kwtLocalModel:'gemma4-12b-local',kwtSiteOriginsV3:[],kwtImageHostOriginsV3:[],kwtMissingImageHostsV1:[]}
 type Tab='rules'|'connection'|'permissions'
@@ -76,9 +76,10 @@ export default function ExtensionCenter(){
     {error&&<div className="control-alert error"><AlertTriangle size={17}/>{error}<button onClick={()=>setError('')}>닫기</button></div>}
     {note&&<div className="control-alert success">{note}</div>}
     <div className="ext-summary"><div><Puzzle size={21}/><span>{remote?.paired?'확장앱 연결됨':'확장앱 연결 전'}</span></div>
-      <span className={remote?.connected?'ext-connected':'ext-disconnected'}>{remote?.connected?'Chrome 동기화 활성':'Chrome 미연결 또는 대기'}</span>
+      <span className={remote?.connected?'ext-connected':'ext-disconnected'}>{/* KWT_EXTENSION_PRESENCE_V2_0_3 */}{!remote?.paired?'Chrome 연결 전':remote.connected?'Chrome 최근 활동 확인됨':remote.last_seen?'페어링 유지 · 최근 활동 대기':'페어링 완료 · 첫 동기화 대기'}</span>
       <span>동기화 버전 {remote?.revision??'-'}</span>
-      <span className="ext-muted">{remote?.last_seen?`마지막 연결 ${new Date(remote.last_seen*1000).toLocaleString('ko-KR')}`:'연결 기록 없음'}</span>
+      <span className="ext-muted">{remote?.last_seen?`마지막 활동 ${new Date(remote.last_seen*1000).toLocaleString('ko-KR')}`:'활동 기록 없음'}</span>
+      <span className="ext-muted">{remote?.last_sync?`마지막 설정 동기화 ${new Date(remote.last_sync*1000).toLocaleString('ko-KR')}`:'설정 동기화 기록 없음'}</span>
     </div>
     <div className="ext-tabs">
       {([['rules','사이트 수집 규칙'],['connection','서버 · 동기화'],['permissions','사이트 · CDN 권한']] as const).map(([id,label])=><button key={id} className={tab===id?'active':''} onClick={()=>setTab(id)}>{label}</button>)}
