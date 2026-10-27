@@ -26,10 +26,19 @@ if errorlevel 1 (
 cd /d "%ROOT%\studio"
 if not exist node_modules (
   echo [Studio] Installing npm packages...
-  call npm install || (echo [ERROR] npm install failed & pause & exit /b 1)
+  call npm install
+  if errorlevel 1 (
+    echo [ERROR] npm install failed
+    set "KWT_STUDIO_EXIT_CODE=1"
+    goto :kwt_studio_cleanup
+  )
 )
 call npm run tauri dev
+set "KWT_STUDIO_EXIT_CODE=%ERRORLEVEL%"
 rem KWT_STUDIO_EXIT_CLEANUP_V1_5 : stop recognized loopback Kone services on Studio exit
 rem KWT_GUI_LIFECYCLE_V1_4_0: GUI lease expiry stops Studio-owned servers; do not kill external port listeners.
-if errorlevel 1 (echo [ERROR] Studio failed; check Rust, MSVC Build Tools, WebView2. & pause)
-endlocal
+rem KWT_BRIDGE_EXIT_V2_1_1_BAT: launcher fallback; normal/crash GUI close is also monitored by Bridge.
+:kwt_studio_cleanup
+"%PYTHON%" "%ROOT%\studio-bridge\bridge_launcher.py" desktop-exit
+if not "%KWT_STUDIO_EXIT_CODE%"=="0" echo [ERROR] Studio failed; check Rust, MSVC Build Tools, WebView2.
+endlocal & exit /b %KWT_STUDIO_EXIT_CODE%
