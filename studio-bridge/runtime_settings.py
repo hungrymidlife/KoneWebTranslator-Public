@@ -36,7 +36,9 @@ DEFAULTS = {
     'typesetting': {'lama_tile_size': 768, 'lama_tile_context': 72,
                     'typeset_min_font_size': 8, 'typeset_max_font_size': 72,
                     'typeset_padding_percent': 4.5, 'typeset_line_height_ratio': 1.24,
-                    'output_image_quality': 92, 'zip_compression_level': 6},
+                    'output_image_quality': 92, 'zip_compression_level': 6,
+                    # KWT_VIRTUAL_OCR_BOX_V1_8
+                    'virtual_box_width_percent': 140, 'virtual_box_height_percent': 125},
     'chat': {'context_reserve': 400, 'auto_reply_margin': 512, 'summary_batch_messages': 4,
              'summary_chunk_budget': 1150, 'summary_output_tokens': 700,
              'summary_max_chars': 2200, 'summary_previous_chars': 2000,
@@ -72,6 +74,8 @@ INTEGER_RULES = {
     ('typesetting', 'typeset_max_font_size'): (8, 96),
     ('typesetting', 'output_image_quality'): (60, 100),
     ('typesetting', 'zip_compression_level'): (0, 9),
+    ('typesetting', 'virtual_box_width_percent'): (100, 200),
+    ('typesetting', 'virtual_box_height_percent'): (100, 200),
 }
 FLOAT_RULES = {
     ('gemma', 'top_p'): (0.01, 1.0),
