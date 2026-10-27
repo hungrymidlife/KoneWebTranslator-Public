@@ -140,11 +140,27 @@ def typeset(raw, regions, report=None, text_color_mode='auto', cache_dir=None):
 # Keep total base64 JSON body below server.py MAX_REQUEST_BYTES (35 MiB).
 BATCH_PAGES = 3
 BATCH_RAW_BYTES = 22 * 1024 * 1024
+
+# KWT_UNIFIED_RUNTIME_V1: snapshot batch settings once at each ZIP start.
+def _kwt_batch_snapshot():
+    path = Path(__file__).resolve().parent.parent / 'runtime_settings.json'
+    if not path.is_file():
+        return BATCH_PAGES, BATCH_RAW_BYTES
+    obj = json.loads(path.read_text(encoding='utf-8-sig'))
+    if not isinstance(obj, dict) or obj.get('schema_version') != 1:
+        raise ValueError('Invalid runtime settings version')
+    settings = obj.get('pipeline')
+    if not isinstance(settings, dict):
+        raise ValueError('Missing runtime pipeline settings')
+    pages, mb = settings.get('batch_pages'), settings.get('batch_raw_mb')
+    if type(pages) is not int or not 1 <= pages <= 20 or type(mb) is not int or not 4 <= mb <= 22:
+        raise ValueError('Invalid ZIP batch settings (pages 1~20, raw MB 4~22)')
+    return pages, mb * 1024 * 1024
 OCR_FINISHED = {'completed', 'completed_with_errors', 'failed'}
 TRANSLATION_FINISHED = {'completed', 'completed_with_errors', 'failed'}
 
 
-def build_batches(zin, pages, report):
+def build_batches(zin, pages, report, batch_pages=BATCH_PAGES, batch_raw_bytes=BATCH_RAW_BYTES):
     # Work on bounded groups so an entire chapter is never held in RAM.
     batch, raw_bytes = [], 0
     for index, info in enumerate(pages):
@@ -164,7 +180,7 @@ def build_batches(zin, pages, report):
             item = (index, info, None, f'{type(exc).__name__}: {exc}')
             report(f'Invalid page: {info.filename}: {exc}')
         size = len(raw) if item[2] is not None else 0
-        if batch and (len(batch) >= BATCH_PAGES or raw_bytes + size > BATCH_RAW_BYTES):
+        if batch and (len(batch) >= batch_pages or raw_bytes + size > batch_raw_bytes):
             yield batch
             batch, raw_bytes = [], 0
         batch.append(item)
@@ -177,6 +193,7 @@ def process_zip(source, output_dir, report=lambda *args: None, cancelled=lambda:
     if text_color_mode not in ('auto', 'black', 'white'):
         raise ValueError('Invalid text color mode')
     progress = progress or (lambda **kwargs: None)
+    batch_pages, batch_raw_bytes = _kwt_batch_snapshot()
     source = Path(source).resolve()
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -198,7 +215,7 @@ def process_zip(source, output_dir, report=lambda *args: None, cancelled=lambda:
             total = len(pages)
             progress(stage='시작', page=0, total=total, detail='OCR 0 | 번역 0 | 저장 0')
             with zipfile.ZipFile(temp_target, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zout:
-                for batch in build_batches(zin, pages, report):
+                for batch in build_batches(zin, pages, report, batch_pages, batch_raw_bytes):
                     if cancelled():
                         raise InterruptedError('User cancelled; server in-flight job may continue')
                     valid = [v for v in batch if v[2] is not None]
@@ -301,7 +318,7 @@ def process_zip(source, output_dir, report=lambda *args: None, cancelled=lambda:
         document={'schema_version':1,'source_kind':'zip','source_zip_name':source.name,
                   'source_zip_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),
                   'images':records,'typesetting_method':'lama_tiled_v06',
-                  'pipeline':'batched_ocr_async_translation_v03_lama_tiled_v06_color_v05','batch_pages':BATCH_PAGES,
+                  'pipeline':'batched_ocr_async_translation_v03_lama_tiled_v06_color_v05','batch_pages':batch_pages, 'batch_raw_mb':batch_raw_bytes // (1024*1024),
                   'text_color_mode':text_color_mode}
         metadata_path.write_text(json.dumps(document,ensure_ascii=False,indent=2),encoding='utf-8')
         temp_target.replace(target)

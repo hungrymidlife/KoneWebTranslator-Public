@@ -18,6 +18,7 @@ import threading
 import time
 import urllib.request
 from pathlib import Path
+from runtime_settings import payload as kwt_runtime_payload, save as kwt_save_runtime  # KWT_UNIFIED_RUNTIME_V1
 
 BASE = Path(__file__).resolve().parent.parent / 'local-server'
 SETTINGS = BASE / 'gemma_translation_settings.json'
@@ -540,6 +541,7 @@ _log_state, _log_change, _log_clear = _install_log_management(service)
 
 
 def handle_get(path,params):
+    if path=='/api/manager/runtime-settings':return kwt_runtime_payload()
     if path=='/api/manager/log-policy':return _log_state()
     if path=='/api/manager/status':return service.status()
     if path=='/api/manager/settings':return service.settings()
@@ -550,6 +552,8 @@ def handle_get(path,params):
 
 
 def handle_post(path,body):
+    if path=='/api/manager/runtime-settings':
+        return {'values': kwt_save_runtime(body)}
     if path=='/api/manager/gui-session':
         action=body.get('action')
         sid=body.get('session_id')

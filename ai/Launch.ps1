@@ -15,19 +15,43 @@ $draft = Join-Path $root 'models\mtp-gemma-4-12B-it.gguf'
 if (-not (Test-Path -LiteralPath $server -PathType Leaf)) { throw "Server executable missing: $server" }
 if (-not (Test-Path -LiteralPath $model -PathType Leaf)) { throw "Model missing: $model" }
 
+# KWT_UNIFIED_RUNTIME_V1: validated JSON saved by Studio; fallback is the original launcher.
+$gemmaOptions = @{
+    context_size = 8192; gpu_layers = 99; flash_attention = 'on'; parallel_slots = 1
+    top_k = 64; top_p = 0.9; min_p = 0.05; repeat_penalty = 1.1
+}
+$runtimeFile = Join-Path (Split-Path -Parent $PSScriptRoot) 'runtime_settings.json'
+if (Test-Path -LiteralPath $runtimeFile -PathType Leaf) {
+    $runtimeJson = Get-Content -LiteralPath $runtimeFile -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($runtimeJson.schema_version -ne 1 -or $null -eq $runtimeJson.gemma) {
+        throw 'runtime_settings.json schema is invalid.'
+    }
+    foreach ($name in @('context_size','gpu_layers','flash_attention','parallel_slots','top_k','top_p','min_p','repeat_penalty')) {
+        $item = $runtimeJson.gemma.PSObject.Properties[$name]
+        if ($null -eq $item) { throw "runtime_settings.json missing Gemma option: $name" }
+        $gemmaOptions[$name] = $item.Value
+    }
+    if ([int]$gemmaOptions['context_size'] -lt 2048 -or [int]$gemmaOptions['context_size'] -gt 131072 -or
+        [int]$gemmaOptions['gpu_layers'] -lt 0 -or [int]$gemmaOptions['gpu_layers'] -gt 999 -or
+        [int]$gemmaOptions['parallel_slots'] -lt 1 -or [int]$gemmaOptions['parallel_slots'] -gt 16 -or
+        $gemmaOptions['flash_attention'] -notin @('on','off','auto')) {
+        throw 'runtime_settings.json contains invalid Gemma launch options.'
+    }
+}
+
 $argsList = @(
     '-m', $model,
-    '-ngl', '99',
-    '-fa', 'on',
-    '-c', '8192',
-    '-np', '1',
+    '-ngl', ([string]$gemmaOptions['gpu_layers']),
+    '-fa', ([string]$gemmaOptions['flash_attention']),
+    '-c', ([string]$gemmaOptions['context_size']),
+    '-np', ([string]$gemmaOptions['parallel_slots']),
     '--host', '127.0.0.1',
     '--port', '18080',
     '--alias', 'gemma4-12b-local',
-    '--top-k', '64',
-    '--top-p', '0.9',
-    '--min-p', '0.05',
-    '--repeat-penalty', '1.1'
+    '--top-k', ([string]$gemmaOptions['top_k']),
+    '--top-p', ([System.Convert]::ToString([double]$gemmaOptions['top_p'],[System.Globalization.CultureInfo]::InvariantCulture)),
+    '--min-p', ([System.Convert]::ToString([double]$gemmaOptions['min_p'],[System.Globalization.CultureInfo]::InvariantCulture)),
+    '--repeat-penalty', ([System.Convert]::ToString([double]$gemmaOptions['repeat_penalty'],[System.Globalization.CultureInfo]::InvariantCulture))
 )
 if ($MTP) {
     if (-not (Test-Path -LiteralPath $draft -PathType Leaf)) {
