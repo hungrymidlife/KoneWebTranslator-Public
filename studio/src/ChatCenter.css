@@ -63,3 +63,8 @@
 .kwt-chat-file-toolbar select{border-radius:5px;border:1px solid #425371;background:#132032;color:#e4eaf5}
 .kwt-chat-download{display:flex;justify-content:flex-start;margin-top:5px}
 .kwt-chat-download button{font-size:10px}
+
+/* KWT_CHAT_THINKING_V2_4: per-conversation reasoning switch */
+.kwt-chat-actions .kwt-chat-thinking-toggle{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;padding:7px 11px;font-size:12px;font-weight:650;color:#b5c2d6;border-color:#4b596c;background:#202c3d}
+.kwt-chat-actions .kwt-chat-thinking-toggle.active{color:#e1f2ff;background:#165b82;border-color:#4299c4}
+.kwt-chat-actions .kwt-chat-thinking-toggle:disabled{opacity:.45;cursor:default}

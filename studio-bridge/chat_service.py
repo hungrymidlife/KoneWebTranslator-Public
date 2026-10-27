@@ -111,9 +111,11 @@ def _save(item: dict) -> None:
 
 
 def _public(item: dict) -> dict:
-    return {k: item.get(k) for k in ('id', 'title', 'created', 'updated', 'system_prompt',
-                                    'context_tokens', 'reply_tokens', 'temperature',
-                                    'summary', 'summary_through', 'messages')}
+    result = {k: item.get(k) for k in ('id', 'title', 'created', 'updated', 'system_prompt',
+                                     'context_tokens', 'reply_tokens', 'temperature',
+                                     'summary', 'summary_through', 'messages')}
+    result['thinking_enabled'] = item.get('thinking_enabled') is True  # KWT_CHAT_THINKING_V2_4
+    return result
 
 
 def _list() -> list:
@@ -142,16 +144,16 @@ def _estimate(text: str | list) -> int:
     return int(asian * 1.8 + other / 2.7 + 10)
 
 
-def _request(messages: list, max_tokens: int, temperature: float, timeout: int = 300) -> tuple[str, str, int]:
+def _request(messages: list, max_tokens: int, temperature: float, timeout: int = 300, thinking_enabled: bool = False) -> tuple[str, str, int]:
     """Return visible answer, finish reason and generated token count.
 
     A llama.cpp length finish MUST NOT be silently treated as a completed answer.
-    Disable optional Gemma 4 thinking for chat so its hidden reasoning does not
-    consume the already-small reply budget (server/template support varies).
+    Thinking is configurable per conversation. Internal summaries always
+    run without thinking to conserve context and preserve speed.
     """
     payload = {'model': MODEL, 'messages': messages, 'stream': False,
                'max_tokens': max_tokens, 'temperature': temperature,
-               'chat_template_kwargs': {'enable_thinking': False}}
+               'chat_template_kwargs': {'enable_thinking': thinking_enabled}}
     req = urllib.request.Request(API, data=json.dumps(payload, ensure_ascii=False).encode('utf-8'),
                                  headers={'Content-Type': 'application/json'}, method='POST')
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -210,6 +212,7 @@ def _output_limit(messages: list, item: dict, chat_cfg=None) -> int:
 def _generate_complete(prompt: list, item: dict, chat_cfg=None) -> tuple[str, dict]:
     """Continue on length stops, bounded by configured server call count."""
     chat_cfg = chat_cfg or _CHAT_DEFAULTS
+    thinking_enabled = item.get('thinking_enabled') is True  # Per-conversation snapshot
     selected = int(item['reply_tokens'])
     temperature = float(item['temperature'])
     context = int(item['context_tokens'])
@@ -242,7 +245,7 @@ def _generate_complete(prompt: list, item: dict, chat_cfg=None) -> tuple[str, di
             messages = [system, latest, {'role': 'assistant', 'content': tail}, followup]
         try:
             limit = _output_limit(messages, item, chat_cfg)
-            part, reason, tokens = _request(messages, limit, temperature, timeout=chat_cfg['timeout_sec'])
+            part, reason, tokens = _request(messages, limit, temperature, timeout=chat_cfg['timeout_sec'], thinking_enabled=thinking_enabled)
         except Exception:
             if not answer:
                 raise
@@ -254,7 +257,8 @@ def _generate_complete(prompt: list, item: dict, chat_cfg=None) -> tuple[str, di
         if reason != 'length':
             break
     return answer, {'finish_reason': reason, 'completion_tokens': total_tokens,
-                    'segments': segments, 'truncated': reason in ('length', 'continuation_error')}
+                    'segments': segments, 'truncated': reason in ('length', 'continuation_error'),
+                    'thinking_enabled': thinking_enabled}
 
 
 def _summarize(previous: str, messages: list, chat_cfg=None) -> str:
@@ -343,7 +347,7 @@ def post(path: str, body: dict) -> object:
         now = time.time()
         item = {'id': uuid.uuid4().hex, 'title': '새 대화', 'created': now, 'updated': now,
                 'system_prompt': DEFAULT_SYSTEM, 'context_tokens': 4096,
-                'reply_tokens': 0, 'temperature': 0.65,
+                'reply_tokens': 0, 'temperature': 0.65, 'thinking_enabled': False,
                 'summary': '', 'summary_through': 0, 'messages': []}
         _save(item)
         return _public(item)
@@ -355,6 +359,9 @@ def post(path: str, body: dict) -> object:
             kwt_delete_attachments(cid)
             return {'deleted': True}
         if path == '/api/chat/settings':
+            thinking_enabled = body.get('thinking_enabled', item.get('thinking_enabled', False))
+            if type(thinking_enabled) is not bool:
+                raise ValueError('추론 모드는 true 또는 false만 허용합니다.')
             prompt = str(body.get('system_prompt', item['system_prompt'])).strip()
             context = int(body.get('context_tokens', item['context_tokens']))
             reply = int(body.get('reply_tokens', item['reply_tokens']))
@@ -368,7 +375,8 @@ def post(path: str, body: dict) -> object:
             if not 0 <= temperature <= 2:
                 raise ValueError('temperature 범위는 0~2입니다.')
             item.update(system_prompt=prompt, context_tokens=context,
-                        reply_tokens=reply, temperature=temperature, updated=time.time())
+                        reply_tokens=reply, temperature=temperature,
+                        thinking_enabled=thinking_enabled, updated=time.time())
             _save(item)
             return _public(item)
         if path == '/api/chat/send':
