@@ -3,13 +3,13 @@ import {Stage,Layer,Image as KImage,Text as KText,Rect,Transformer} from 'react-
 import Konva from 'konva'
 import type {LayerData} from './api'
 
-type Props={image:string;layers:LayerData[];ocr:number[][];selected:string|null;onSelect:(id:string|null)=>void;onUpdate:(id:string,patch:Partial<LayerData>)=>void;showOCR:boolean;editable:boolean}
+type Props={image:string;layers:LayerData[];ocr:number[][];selected:string|null;onSelect:(id:string|null)=>void;onUpdate:(id:string,patch:Partial<LayerData>)=>void;showOCR:boolean;editable:boolean;maximize?:boolean} // KWT_CANVAS_MAXFIT_V1_5_1
 function useHTMLImage(url:string){
   const [img,setImg]=useState<HTMLImageElement|null>(null)
   useEffect(()=>{if(!url){setImg(null);return}const im=new window.Image();let active=true;im.onload=()=>{if(active)setImg(im)};im.onerror=()=>{if(active)setImg(null)};im.src=url;return()=>{active=false}},[url])
   return img
 }
-export default function EditorCanvas({image,layers,ocr,selected,onSelect,onUpdate,showOCR,editable}:Props){
+export default function EditorCanvas({image,layers,ocr,selected,onSelect,onUpdate,showOCR,editable,maximize=false}:Props){
   const host=useRef<HTMLDivElement>(null)
   const transformer=useRef<Konva.Transformer>(null)
   const nodeRefs=useRef<Record<string,Konva.Text|null>>({})
@@ -24,7 +24,7 @@ export default function EditorCanvas({image,layers,ocr,selected,onSelect,onUpdat
   useEffect(()=>{if(!host.current)return;const obs=new ResizeObserver(entries=>{const box=entries[0].contentRect;setBounds({width:Math.max(150,box.width),height:Math.max(150,box.height)})});obs.observe(host.current);return()=>obs.disconnect()},[])
   useEffect(()=>{const keydown=(e:KeyboardEvent)=>{if(e.code==='Space'&&!['INPUT','TEXTAREA'].includes((e.target as HTMLElement)?.tagName)){e.preventDefault();setSpace(true)}};const keyup=(e:KeyboardEvent)=>{if(e.code==='Space')setSpace(false)};window.addEventListener('keydown',keydown);window.addEventListener('keyup',keyup);return()=>{window.removeEventListener('keydown',keydown);window.removeEventListener('keyup',keyup)}},[])
   useEffect(()=>{const node=selected?nodeRefs.current[selected]:null;if(node&&transformer.current&&editable){transformer.current.nodes([node]);transformer.current.getLayer()?.batchDraw()}else{transformer.current?.nodes([])}},[selected,layers,editable])
-  const fit=Math.min(bounds.width/dims.width,bounds.height/dims.height)*.91
+  const fit=Math.min(bounds.width/dims.width,bounds.height/dims.height)*(maximize?.995:.91)
   const stageScale=fit*zoom
   const origin={x:(bounds.width-dims.width*fit)/2,y:(bounds.height-dims.height*fit)/2}
   const onWheel=useCallback((e:Konva.KonvaEventObject<WheelEvent>)=>{

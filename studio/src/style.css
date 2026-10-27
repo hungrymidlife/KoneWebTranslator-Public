@@ -7,3 +7,213 @@
 .control-center{height:100%;overflow:auto;background:radial-gradient(circle at 28% 0%,#172335,#10161e 62%);padding:30px clamp(18px,4vw,60px);min-width:0}.control-heading,.row-spread{display:flex;justify-content:space-between;align-items:center;gap:18px}.control-heading{padding-bottom:24px;border-bottom:1px solid #2b3442;margin-bottom:22px}.control-heading h1{font-size:24px;margin:5px 0 7px;font-weight:710}.control-heading p{font-size:12px;color:#8c9bab;margin:0}.control-content{max-width:1150px}.control-card{background:linear-gradient(130deg,#1a2330,#171d28);border:1px solid #304055;border-radius:13px;padding:23px 25px;margin-bottom:16px;box-shadow:0 12px 28px #0002}.control-card h2{font-size:15px;display:flex;align-items:center;gap:8px;margin:0 0 11px}.control-card h2 svg{color:#86c6ee}.control-card button{flex-shrink:0}.engine-grid{display:grid;grid-template-columns:repeat(2,minmax(280px,1fr));gap:16px}.engine-card{min-height:310px;display:flex;flex-direction:column}.card-heading{display:flex;align-items:center;gap:13px;margin-bottom:23px}.engine-icon{background:#253d52;border-radius:12px;color:#72beed;padding:11px;display:flex}.card-heading h2{margin:0 0 4px}.card-heading span:not(.engine-badge){color:#778fa4;font-size:11px}.engine-badge{font-size:11px;color:#b4bcc8;background:#26303d;border-radius:20px;padding:5px 10px;margin-left:auto;white-space:nowrap}.engine-badge.online{color:#8be2b9;background:#143b32}.engine-detail{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid #2b3746;gap:12px;font-size:12px}.engine-detail span{color:#8193a6}.engine-detail strong{font-size:11px;text-align:right;max-width:67%;overflow-wrap:anywhere}.ctl-label{display:block;color:#9aadc0;font-size:12px;margin:17px 0 8px}.ctl-segments{display:flex;align-items:center;gap:5px;background:#0f1520;padding:4px;border-radius:8px;max-width:280px}.ctl-segments button{flex:1;border:0;padding:7px;color:#94a6bb;border-radius:6px;background:transparent}.ctl-segments button.active{background:#2a5472;color:white}.control-buttons{display:flex;gap:9px;margin-top:auto;padding-top:20px}.control-buttons button{font-size:12px}.ctl-description{font-size:12px;line-height:1.65;color:#859bad;margin:0 0 13px}.ctl-inline{display:flex;gap:10px;align-items:center}.ctl-inline input{flex:1}.console-preview,.console-full{background:#090d14;border:1px solid #283645;border-radius:9px;padding:16px;font:12px/1.7 Consolas,'Malgun Gothic',monospace;white-space:pre-wrap;overflow-wrap:anywhere;color:#a9d7bd}.console-preview{height:140px;overflow:auto}.console-preview time,.console-full time{color:#65889e}.settings-form{max-width:1000px}.prompt-editor{display:block;width:100%;min-height:310px;resize:vertical;font:12px/1.7 Consolas,'Malgun Gothic',monospace;background:#111824}.settings-pair{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:20px 0}.settings-pair label{color:#b7c7d7;font-size:12px;display:flex;flex-direction:column;gap:8px}.settings-pair input,.settings-pair select{width:100%;max-width:340px}.settings-pair select{font:inherit;color:#e8ecf6;background:#171c27;border:1px solid #303745;border-radius:8px;padding:10px}.ocr-slider{margin:30px 0;padding:19px 22px;background:#131d2a;border:1px solid #2b3b4d;border-radius:10px}.ocr-slider input{width:100%}.ocr-slider .ctl-label{margin:0}.log-card{max-width:1180px}.log-card h2{margin-bottom:7px}.console-full{height:min(58vh,650px);overflow:auto;margin:15px 0}.check-label{display:flex;align-items:center;gap:9px;font-size:11px;color:#9eb0bf;white-space:nowrap}.setting-path{display:flex;gap:15px;padding:11px;border-bottom:1px solid #2b3746}.setting-path strong{min-width:160px;color:#9fd2ef}.setting-path span{color:#a9b6c6}.control-alert{max-width:1050px;border-radius:9px;padding:12px 15px;margin-bottom:15px;display:flex;gap:10px;align-items:center;font-size:12px}.control-alert.error{background:#442b34;border:1px solid #79424d;color:#f9ced4}.control-alert.success{background:#1b3b33;border:1px solid #2d6351;color:#a3eed0}.control-alert button{margin-left:auto;background:transparent;color:inherit;border:0}
 @media(max-width:1400px){.studio-nav.expanded{width:165px}.studio-nav-item{padding:10px 7px}.control-center{padding:18px 25px}.engine-grid{grid-template-columns:1fr}.control-card{padding:17px 19px}.status-pair{gap:6px}}
 @media(max-width:1100px){.studio-nav.expanded{width:54px}.studio-nav.expanded .studio-nav-item,.studio-nav.expanded .nav-toggle{justify-content:center;padding:10px}.studio-nav.expanded .studio-nav-item span,.studio-nav.expanded .nav-toggle span{display:none}.status-pair{display:none}.engine-grid{grid-template-columns:1fr}}
+
+
+/* KWT_EDITOR_UX_V1_5_0 */
+:root {
+  --kwt-editor-right-width: 360px;
+  --kwt-editor-left-width: 280px;
+  --kwt-page-strip-collapsed: 84px;
+  --kwt-page-strip-expanded: 188px;
+}
+
+/* 1) 페이지 썸네일 레일: 기본은 낮게, hover/focus 시 확장 */
+[class*="page-list"],
+[class*="pageList"],
+[class*="thumb-strip"],
+[class*="thumbStrip"],
+[class*="thumbnail-strip"],
+[class*="thumbnailStrip"],
+[class*="page-rail"],
+[class*="pageRail"] {
+  max-height: var(--kwt-page-strip-collapsed) !important;
+  overflow-y: hidden !important;
+  overflow-x: auto !important;
+  transition: max-height .18s ease, box-shadow .18s ease !important;
+}
+[class*="page-list"]:hover,
+[class*="page-list"]:focus-within,
+[class*="pageList"]:hover,
+[class*="pageList"]:focus-within,
+[class*="thumb-strip"]:hover,
+[class*="thumb-strip"]:focus-within,
+[class*="thumbStrip"]:hover,
+[class*="thumbStrip"]:focus-within,
+[class*="thumbnail-strip"]:hover,
+[class*="thumbnail-strip"]:focus-within,
+[class*="thumbnailStrip"]:hover,
+[class*="thumbnailStrip"]:focus-within,
+[class*="page-rail"]:hover,
+[class*="page-rail"]:focus-within,
+[class*="pageRail"]:hover,
+[class*="pageRail"]:focus-within {
+  max-height: var(--kwt-page-strip-expanded) !important;
+  box-shadow: 0 0 0 1px rgba(120,180,255,.22) inset !important;
+}
+
+/* 2) 편집 캔버스 우선 배치: 중앙 영역을 최대 확보 */
+[class*="editor-layout"],
+[class*="editorLayout"],
+[class*="editor-shell"],
+[class*="editorShell"],
+[class*="editor-workspace"],
+[class*="editorWorkspace"] {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+[class*="compare-pane"],
+[class*="comparePane"],
+[class*="canvas-pane"],
+[class*="canvasPane"],
+[class*="editor-main"],
+[class*="editorMain"] {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+
+/* 원본/결과 이미지가 너무 작아지지 않도록 */
+canvas,
+[class*="editor-canvas"] canvas,
+[class*="compare-pane"] img,
+[class*="comparePane"] img,
+[class*="canvas-pane"] img,
+[class*="canvasPane"] img,
+[class*="editor-preview"] img,
+[class*="editorPreview"] img {
+  image-rendering: auto;
+}
+
+/* 3) 우측 식질 속성 패널은 항상 넓게 유지 */
+[class*="property-panel"],
+[class*="propertyPanel"],
+[class*="properties-panel"],
+[class*="propertiesPanel"],
+[class*="editor-sidebar"],
+[class*="editorSidebar"],
+[class*="text-layer-panel"],
+[class*="textLayerPanel"] {
+  width: var(--kwt-editor-right-width) !important;
+  min-width: var(--kwt-editor-right-width) !important;
+  max-width: var(--kwt-editor-right-width) !important;
+  flex: 0 0 var(--kwt-editor-right-width) !important;
+}
+
+/* 4) 중앙 편집 뷰의 세로 공간 확보 */
+[class*="editor-stage"],
+[class*="editorStage"],
+[class*="compare-stage"],
+[class*="compareStage"],
+[class*="editor-view"],
+[class*="editorView"] {
+  min-height: calc(100vh - 210px) !important;
+}
+
+/* 5) 작은 화면에서도 중앙 편집 영역 우선 */
+@media (max-width: 1700px) {
+  :root {
+    --kwt-editor-right-width: 320px;
+    --kwt-editor-left-width: 250px;
+  }
+}
+
+/* KWT_EDITOR_FOCUS_SHUTDOWN_V1_5_1: actual .page-strip and .workspace elements. */
+.workspace.kwt-editor-focus {
+  position:fixed !important;
+  inset:0 !important;
+  z-index:10000;
+  width:100vw !important;
+  height:100vh !important;
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr) minmax(285px,330px) !important;
+  background:#101319;
+}
+.workspace.kwt-editor-focus .sidebar { display:none !important; }
+.workspace.kwt-editor-focus .main { min-width:0; position:relative; }
+.workspace.kwt-editor-focus .properties {
+  display:flex !important;
+  min-width:0;
+  border-left:1px solid #344252;
+}
+.workspace.kwt-editor-focus .document-toolbar {
+  height:44px !important;
+  min-height:44px;
+  padding:3px 10px;
+  gap:7px;
+}
+.workspace.kwt-editor-focus .doc-label {max-width:230px;}
+.workspace.kwt-editor-focus .progress-strip {min-height:20px;height:20px;padding:2px 11px;}
+.workspace.kwt-editor-focus .compare,
+.workspace.kwt-editor-focus .compare.edit {display:grid;grid-template-columns:minmax(0,1fr) !important;min-height:0;height:100%;}
+.workspace.kwt-editor-focus .compare>.image-panel:not(.editor-panel) {display:none !important;}
+.workspace.kwt-editor-focus .image-area {min-height:0;flex:1;padding-top:16px;}
+.workspace.kwt-editor-focus .editor-panel {min-height:0;min-width:0;}
+.workspace.kwt-editor-focus .editor-panel .canvas-host {min-height:0;flex:1;}
+.workspace.kwt-editor-focus .bottom-bar {height:36px;}
+.workspace.kwt-editor-focus .view-switch {display:none;}
+.workspace.kwt-editor-focus .kwt-focus-toggle {white-space:nowrap;}
+
+/* Collapsed by default; hover/focus reveals actual page thumbnails on top of canvas. */
+.workspace.kwt-editor-focus .page-strip {
+  position:absolute !important;
+  top:64px;
+  left:0;
+  right:0;
+  z-index:15;
+  height:16px !important;
+  min-height:16px;
+  max-height:none !important;
+  padding:0 10px;
+  gap:7px;
+  border-bottom:1px solid #3b4f63;
+  overflow:hidden !important;
+  background:#192535;
+  opacity:.85;
+  cursor:pointer;
+  transition:height .16s ease,opacity .16s ease,padding .16s ease !important;
+}
+.workspace.kwt-editor-focus .page-strip::before {
+  content:'페이지 목록 · 마우스를 올리면 펼쳐짐';
+  position:absolute;
+  top:0;
+  left:12px;
+  font-size:10px;
+  line-height:15px;
+  color:#a7c6d8;
+  pointer-events:none;
+}
+.workspace.kwt-editor-focus .page-strip:hover,
+.workspace.kwt-editor-focus .page-strip:focus-within {
+  height:110px !important;
+  padding:10px;
+  overflow-x:auto !important;
+  overflow-y:hidden !important;
+  opacity:1;
+  background:#171d2a;
+  box-shadow:0 8px 24px #000a;
+}
+.workspace.kwt-editor-focus .page-strip:hover::before,
+.workspace.kwt-editor-focus .page-strip:focus-within::before {display:none;}
+.workspace.kwt-editor-focus .page-thumb {height:83px;min-width:62px;flex-shrink:0;}
+@media (max-width:1100px) {
+  .workspace.kwt-editor-focus {grid-template-columns:minmax(0,1fr) 270px !important;}
+  .workspace.kwt-editor-focus .doc-label {max-width:140px;}
+  .workspace.kwt-editor-focus .mini-check {display:none;}
+}
+
+/* KWT_STUDIO_LAYER_CRUD_V1_6_1: properties sidebar, not the narrow top toolbar. */
+.properties .kwt-add-layer {
+  font-size: 11px;
+  padding: 6px 9px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.properties .kwt-delete-layer {
+  margin: -7px 0 14px;
+  width: 100%;
+  border-color: #76505c;
+  color: #f5becb;
+}
+.properties .kwt-delete-layer:hover {
+  background: #4d2b36;
+}
