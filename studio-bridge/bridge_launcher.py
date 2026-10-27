@@ -151,6 +151,37 @@ def ensure():
     start_new()
 
 
+# KWT_BRIDGE_EXIT_V2_1_1_LAUNCHER
+
+def notify_desktop_exit():
+    """Safe fallback after Tauri exits (even if React never sent a lease)."""
+    if probe() != 'compatible':
+        print('[INFO] Bridge not running or incompatible; nothing to notify.')
+        return
+    owner = listener_owner()
+    status, data = http_get('/api/health')
+    if (not is_our_bridge(owner) or status != 200 or not isinstance(data, dict)
+            or int(data.get('bridge_pid', -1)) != owner['pid']):
+        print('[WARN] Bridge owner not verified; not touching external process.')
+        return
+    request = urllib.request.Request(
+        HOST + '/api/manager/gui-session',
+        data=json.dumps({'action': 'desktop-exit-if-empty'}).encode('utf-8'),
+        headers={'Content-Type': 'application/json', 'X-KWT-Studio': '1'},
+        method='POST',
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(request, timeout=2.5) as response:
+            result = json.load(response)
+        if result.get('deferred'):
+            print('[INFO] Another Studio GUI is active; Bridge remains running.')
+        else:
+            print('[OK] Studio exited; Bridge cleanup scheduled.')
+    except (urllib.error.URLError, OSError, ValueError, TimeoutError) as exc:
+        print('[WARN] Bridge exit notification failed:', exc)
+
+
 def main():
     arg = sys.argv[1].lower() if len(sys.argv)>1 else 'check'
     if arg == 'check':
@@ -164,7 +195,10 @@ def main():
     if arg == 'ensure':
         ensure()
         return 0
-    raise RuntimeError('Use: bridge_launcher.py check|ensure')
+    if arg == 'desktop-exit':
+        notify_desktop_exit()
+        return 0
+    raise RuntimeError('Use: bridge_launcher.py check|ensure|desktop-exit')
 
 
 if __name__ == '__main__':

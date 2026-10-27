@@ -22,8 +22,10 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 from PIL import Image, ImageDraw, ImageFont
+import installer_service  # KWT_BRIDGE_EXIT_V2_1_1_SERVER: inspect active installer job
 from installer_service import get as installer_get, post as installer_post  # KWT_STUDIO_INSTALLER_V2_0_0
 from chrome_extension_install import open_for_user as kwt_open_extension_guide  # KWT_CHROME_EXTENSION_GUIDE_V2_0_2
+from manager_service import kwt_bridge_shutdown_ready
 from manager_service import handle_get as studio_manager_get, handle_post as studio_manager_post  # KWT_UNIFIED_V1
 from extension_service import get as extension_get, post as extension_post, EXT_RE  # KWT_EXT_SYNC_V1_3
 
@@ -692,9 +694,50 @@ class Handler(BaseHTTPRequestHandler):
             traceback.print_exc();return self._send(500,{'error':str(exc)})
 
 
+def _kwt_bridge_exit_watchdog():
+    """Exit the Bridge when the LAST GUI closes; preserve running disk jobs.
+
+    A missing pagehide on a crashed GUI is handled by manager_service's existing
+    45-second session expiry. Never terminate an unrelated or external process.
+    """
+    idle_since = None
+    while True:
+        time.sleep(1.0)
+        if bridge_server is None or not kwt_bridge_shutdown_ready():
+            idle_since = None
+            continue
+        if idle_since is None:
+            idle_since = time.monotonic()
+        if time.monotonic() - idle_since < 3.0:
+            continue  # allow quick GUI reload/reopen
+        with queue_lock:
+            busy = bool(active_batch or bridge_restarting)
+        with projects_lock:
+            busy = busy or any(p.state in ('running', 'finalizing') for p in projects.values())
+        with installer_service.LOCK:
+            busy = busy or installer_service.CURRENT is not None
+        if busy:
+            continue  # do not interrupt ZIP writes, tests, or model downloads
+        if not kwt_bridge_shutdown_ready():
+            idle_since = None
+            continue
+        # The BAT/hidden console may already have exited; do not print to a dead stdout.
+        try:
+            log_path = BASE / 'studio-bridge' / '.studio_runtime' / 'bridge_lifecycle.log'
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_path.open('a', encoding='utf-8') as log:
+                log.write('%s GUI closed; Bridge shutdown PID=%d\n' %
+                          (time.strftime('%Y-%m-%d %H:%M:%S'), os.getpid()))
+        except OSError:
+            pass
+        bridge_server.shutdown()  # called from a separate thread, never HTTP handler
+        return
+
+
 if __name__=='__main__':
     print('[KWT STUDIO] http://127.0.0.1:%d (loopback only)' % PORT, flush=True)
     print('[KWT STUDIO] Python:',sys.executable, flush=True)
     bridge_server = ThreadingHTTPServer(('127.0.0.1',PORT),Handler)
+    threading.Thread(target=_kwt_bridge_exit_watchdog, name='kwt-bridge-exit', daemon=True).start()
     try:bridge_server.serve_forever()
     finally:bridge_server.server_close()
