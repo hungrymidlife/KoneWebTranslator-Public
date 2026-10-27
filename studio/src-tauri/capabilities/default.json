@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Local Studio window and folder picker",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:default"]
+}

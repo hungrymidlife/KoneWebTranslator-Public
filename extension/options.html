@@ -1,0 +1,45 @@
+<!doctype html><html lang="ko"><head><meta charset="UTF-8"><link rel="stylesheet" href="style.css"></head><body class="options"><h2>KoneWebTranslator 설정</h2><label for="url">로컬 서버 주소</label><input id="url" value="http://127.0.0.1:8765"><p class="note">보안을 위해 localhost / 127.0.0.1 주소만 허용합니다. API 키는 확장 프로그램에 입력하지 마세요.</p><button id="save">저장</button><p id="msg"></p>
+<!-- KWT_SITE_CDN_PERMISSIONS_V3 -->
+<section id="kwt-host-permissions" style="margin-top:24px;border-top:1px solid #cbd5e1;padding-top:16px">
+ <h3>사이트 실행 및 이미지 CDN 권한 관리</h3>
+ <p class="note">사이트 자동 실행과 이미지 다운로드 권한은 서로 다릅니다. 기존에 저장한 수집 규칙은 유지되지만, 이 버전에서는 사이트 실행 권한을 승인한 페이지에만 스크립트가 자동으로 삽입됩니다.</p>
+ <h4>1. 만화 사이트 실행 권한</h4>
+ <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+   <input id="kwt-site-input" type="text" placeholder="예: https://hitomi.la" style="flex:1;min-width:220px;max-width:100%;padding:8px;box-sizing:border-box">
+   <button id="kwt-site-add" type="button">사이트 실행 허용</button>
+ </div>
+ <p class="note">저장된 자동 수집 규칙에서 사이트 목록을 가져옵니다. 승인 후 기존에 열려 있던 만화 페이지는 새로고침하세요.</p>
+ <div id="kwt-site-list" style="display:grid;gap:7px"></div>
+ <h4>2. 이미지 CDN 권한 요청 대기</h4>
+ <div id="kwt-host-pending" style="display:grid;gap:7px"></div>
+ <h4>3. 이미지 CDN 권한 관리</h4>
+ <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px">
+   <input id="kwt-host-input" type="text" placeholder="예: https://a1.gold-usergeneratedcontent.net" style="flex:1;min-width:220px;max-width:100%;padding:8px;box-sizing:border-box">
+   <button id="kwt-host-add" type="button">CDN 권한 요청</button>
+   <button id="kwt-host-refresh" type="button" class="secondary">목록 새로고침</button>
+ </div>
+ <div id="kwt-host-granted" style="display:grid;gap:7px"></div>
+ <h4>4. 이전 버전에서 남은 권한</h4>
+ <p class="note">이전에 허용한 호스트와 전체 사이트 권한이 표시됩니다. 특히 <code>http://*/*</code>와 <code>https://*/*</code> 같은 광범위한 선택 권한이 남아 있다면 개별 권한보다 우선하여 접근할 수 있으므로 필요하지 않으면 삭제하세요. 로컬 서버 필수 권한은 목록에서 제외합니다.</p>
+ <div id="kwt-host-legacy" style="display:grid;gap:7px"></div>
+ <p id="kwt-host-msg" role="status" style="white-space:pre-wrap;overflow-wrap:anywhere"></p>
+</section>
+<script src="options.js"></script>
+<script src="host_permissions_v3.js"></script>
+<!-- KWT_STUDIO_EXTENSION_SYNC_V1_3 -->
+<section id="kwt-studio-link" style="margin-top:26px;border-top:1px solid #cbd5e1;padding-top:18px">
+  <h3>KoneWebTranslator Studio 연결</h3>
+  <p class="note">Studio → 웹 확장앱 관리 → 서버·동기화에서 8자리 연결 코드를 발급하고 아래에 입력하세요.
+    기존 Chrome 규칙과 권한은 삭제하지 않습니다. Studio는 Chrome 권한을 자동 승인하지 않습니다.</p>
+  <p id="kwt-studio-status">연결 상태 확인 중...</p>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <input id="kwt-studio-code" inputmode="numeric" maxlength="8" placeholder="Studio 연결 코드 8자리"
+      style="flex:1;min-width:165px;max-width:260px;padding:8px" />
+    <button id="kwt-studio-pair" type="button">Studio 연결</button>
+    <button id="kwt-studio-now" type="button">지금 동기화</button>
+    <button id="kwt-studio-unlink" class="secondary" type="button">이 브라우저 연결 해제</button>
+  </div>
+  <p id="kwt-studio-message" role="status" style="white-space:pre-wrap;overflow-wrap:anywhere"></p>
+</section>
+<script src="studio_sync_options.js"></script>
+</body></html>

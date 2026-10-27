@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KoneWebTranslator - 번역 엔진 설정</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:32px auto;padding:0 18px;max-width:680px;font:14px/1.6 system-ui,sans-serif;color:#e2e8f0;background:#0f172a}
+main{background:#1e293b;padding:24px;border-radius:12px}h2{margin-top:0}p,small{color:#cbd5e1}small{color:#94a3b8}
+label{display:block;margin:14px 0 5px;font-weight:600}input,select{width:100%;padding:10px 11px;border:1px solid #64748b;border-radius:6px;background:#fff;color:#111827;font-size:14px}
+button{padding:10px 14px;cursor:pointer;border:0;border-radius:6px;background:#2563eb;color:white}button.secondary{background:#475569}button.danger{background:#991b1b}button:disabled{opacity:.5} .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}.password{display:flex;gap:8px}.password input{flex:1;min-width:0}.password button{white-space:nowrap}
+.section{margin-top:16px;padding:15px;border:1px solid #475569;border-radius:8px;background:#0f172a}#status{margin-top:14px;white-space:pre-wrap;min-height:22px}[hidden]{display:none!important}
+</style>
+</head>
+<body><main>
+<h2>번역 엔진 설정</h2>
+<p>OCR은 기존 MangaOCR가 담당하고, 인식한 일본어 텍스트만 <b>로컬 Gemma 4</b>에 전송해.</p>
+<section class="section" id="localSection">
+  <strong>llama.cpp 로컬 서버</strong>
+  <label for="localUrl">서버 주소</label>
+  <input id="localUrl" type="text" spellcheck="false" value="http://127.0.0.1:18080/v1">
+  <label for="localModel">모델 ID</label>
+  <input id="localModel" type="text" spellcheck="false" value="gemma4-12b-local">
+  <p><small>`Start_MTP.bat` 또는 `Start_Normal.bat`으로 서버를 켜 둬야 해. 현재 버전은 보안을 위해 같은 PC의 127.0.0.1/localhost 접속만 허용해. API 키나 결제는 필요 없어.</small></p>
+</section>
+
+<div class="row"><button id="save">설정 저장</button><button id="test" class="secondary">연결 및 번역 테스트</button></div>
+<div id="status" role="status" aria-live="polite"></div>
+
+</main><script src="translation_settings.js"></script></body></html>

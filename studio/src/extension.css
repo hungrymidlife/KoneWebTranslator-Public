@@ -1,0 +1,24 @@
+/* KoneWebTranslator Extension Console v1.3 */
+.extension-console{background:radial-gradient(circle at 24% 0%,#172338,#10161e 68%)}
+.ext-summary{max-width:1170px;display:flex;gap:18px;align-items:center;flex-wrap:wrap;background:#172433;border:1px solid #2b4155;border-radius:12px;padding:15px 20px;margin-bottom:17px;color:#a8bdcf;font-size:12px}
+.ext-summary>div{display:flex;align-items:center;gap:9px;font-weight:650;color:#d0e8f7;margin-right:auto}
+.ext-summary svg{color:#62b8e6}.ext-connected{color:#68dca9!important}.ext-disconnected{color:#e7ac6d!important}.ext-muted{color:#7890a4!important}
+.ext-tabs{display:flex;gap:5px;max-width:1150px;border-bottom:1px solid #34455a;margin:0 0 21px;padding-bottom:2px}
+.ext-tabs button{padding:11px 18px;border:0;color:#8ca8bc;background:transparent;border-radius:7px 7px 0 0;font-size:12px}
+.ext-tabs button.active{color:#d6f2ff;background:#204462;border-bottom:2px solid #6ac7f4;font-weight:700}
+.ext-rule-table{min-width:0;overflow:auto;margin:20px 0}
+.ext-rule-head,.ext-rule-row{display:grid;grid-template-columns:1.05fr 1.9fr 2fr 112px 45px;min-width:780px;gap:8px;align-items:center;padding:10px;border-bottom:1px solid #2d3948}
+.ext-rule-head{color:#829fb6;font-size:11px;background:#101924;border-radius:8px 8px 0 0}
+.ext-rule-row input:not([type=checkbox]){min-width:0;width:100%;padding:10px 8px;font-size:12px}
+.ext-rule-row:hover{background:#1c2938}.ext-flags{display:flex;flex-direction:column;gap:6px;font-size:11px;color:#a9c1d3}
+.ext-flags label{display:flex;align-items:center;gap:5px}.ext-flags input{width:auto}.ext-trash{color:#e399aa;background:transparent;border:0;padding:8px}
+.ext-empty{text-align:center;padding:38px 15px;color:#8399b0;font-size:12px}
+.ext-actions{display:flex;justify-content:flex-end;align-items:center;gap:20px;padding:8px 0 25px;max-width:1130px}
+.ext-actions>span{color:#8ea7b9;font-size:12px}.ext-paired,.ext-pair{display:flex;align-items:center;gap:15px;flex-wrap:wrap;margin:20px 0}
+.ext-paired{color:#91d8b9}.ext-paired code{font-size:12px;color:#d1e3f0}.ext-paired button{margin-left:auto}
+.ext-code{display:flex;align-items:center;gap:12px;background:#101723;border:1px solid #2b586d;padding:10px 16px;border-radius:8px}
+.ext-code strong{font-family:Consolas,monospace;font-size:22px;letter-spacing:3px;color:#bde6fe}.ext-code button{border:0;background:transparent;color:#78c9ff}
+.ext-code span{font-size:11px;color:#8297a9}.ext-hosts{border-radius:8px;overflow:auto;margin-top:14px;background:#101925}
+.ext-hosts>div{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #283746;padding:12px 13px;color:#bdcada;font-size:12px;overflow-wrap:anywhere}
+.ext-hosts b{font-size:11px;white-space:nowrap}
+@media(max-width:1050px){.ext-summary{gap:10px}.ext-tabs button{padding:10px}.ext-rule-head,.ext-rule-row{min-width:780px}}

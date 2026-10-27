@@ -1,0 +1,18 @@
+[package]
+name = "kone-web-translator-studio"
+version = "0.1.0"
+description = "KoneWebTranslator Studio"
+authors = ["KoneWebTranslator contributors"]
+edition = "2021"
+license = "GPL-3.0-only"
+
+[lib]
+name = "kone_web_translator_studio_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
