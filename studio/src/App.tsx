@@ -6,8 +6,9 @@ import ControlCenter,{StatusDots,useEngineStatus,type StudioSection} from './Con
 import ExtensionCenter from './ExtensionCenter'
 import FontManager from './FontManager'
 import SetupCenter from './SetupCenter'
+import ChatCenter from './ChatCenter' // KWT_LOCAL_CHAT_V2_2_0
 // KWT_STUDIO_INSTALLER_V2_0_0
-import {LayoutDashboard,Server,Languages,ScanText,Terminal,Settings2,Menu,Type,Download} from 'lucide-react'
+import {LayoutDashboard,Server,Languages,ScanText,Terminal,Settings2,Menu,Type,Download,MessageCircle} from 'lucide-react'
 import {api,imageUrl,fontFileUrl,type FontLibrary,type Project,type PageData,type PageList,type LayerData,type ZipItem} from './api'
 
 // KWT_STUDIO_LAYER_CRUD_V1_6_1
@@ -429,7 +430,7 @@ export default function App(){
   return <div className="app">
     <header className="topbar">
       <div className="brand"><span className="brand-mark"><Layers3 size={21}/></span><div><strong>KoneWebTranslator</strong><small>STUDIO <em>v0.2</em></small></div></div>
-      <div className="menu-tabs"><span className="studio-page-title">{({editor:'번역 · 검수 · 편집',servers:'AI 서버 관리',translation:'번역 설정',ocr:'OCR 설정',logs:'로그 · 진단',settings:'환경 설정',extension:'웹 확장앱 관리',fonts:'폰트 관리'} as Record<StudioSection,string>)[section]}</span></div>
+      <div className="menu-tabs"><span className="studio-page-title">{({editor:'번역 · 검수 · 편집',servers:'AI 서버 관리',chat:'로컬 채팅',translation:'번역 설정',ocr:'OCR 설정',logs:'로그 · 진단',settings:'환경 설정',extension:'웹 확장앱 관리',fonts:'폰트 관리'} as Record<StudioSection,string>)[section]}</span></div>
       <div className="top-actions"><StatusDots status={engineStatus}/><span className={'connection '+(connected?'online':'offline')}><i/>{connected?'로컬 브리지 연결됨':'브리지 연결 필요'}</span><button className="flat" disabled={bridgeRestartBusy} onClick={()=>setBridgeRestartConfirm(true)} title="Studio Bridge 재시작 (작업 상태 초기화)" aria-label="Studio Bridge 재시작"><RefreshCw size={17}/></button><button className="flat" title="전체 화면(F11)" onClick={()=>void import('@tauri-apps/api/window').then(async m=>{const w=m.getCurrentWindow();await w.setFullscreen(!(await w.isFullscreen()))}).catch(()=>{})}><Maximize2 size={16}/></button></div>
     </header>
     <div className="unified-body">
@@ -438,6 +439,7 @@ export default function App(){
         {([
           ['editor','번역 · 검수 · 편집',LayoutDashboard],
           ['servers','AI 서버 관리',Server],
+          ['chat','로컬 채팅',MessageCircle],
           ['translation','번역 설정',Languages],
           ['ocr','OCR 설정',ScanText],
           ['fonts','폰트 관리',Type],
@@ -512,10 +514,11 @@ export default function App(){
         </motion.div></AnimatePresence>:<div className="no-selection"><Layers3 size={35}/><b>텍스트 영역을 선택해 줘</b><p>오른쪽 결과 이미지에서 글자를 클릭하면 글자 내용, 폰트, 좌표와 색상을 편집할 수 있어.</p>{page&&!page.editable&&<p className="warning">이 페이지는 복원 배경이 없거나 아직 처리 중이야.</p>}</div>}
       </aside>
     </div>
+    {section==='chat'&&<ChatCenter gemmaOnline={Boolean(engineStatus?.gemma.online)}/>}
     {section==='extension'&&<ExtensionCenter/>}
     {section==='fonts'&&<FontManager onChanged={()=>void refreshFonts().catch(()=>{})}/>}
     {/* KWT_CHROME_EXTENSION_GUIDE_V2_0_2 */}{section==='installer'&&<SetupCenter onOpenExtension={()=>setSection('extension')}/>}
-    {section!=='editor'&&section!=='extension'&&section!=='fonts'&&section!=='installer'&&<ControlCenter section={section} status={engineStatus} onStatusRefresh={refreshEngineStatus}/>}
+    {section!=='editor'&&section!=='extension'&&section!=='fonts'&&section!=='installer'&&section!=='chat'&&<ControlCenter section={section} status={engineStatus} onStatusRefresh={refreshEngineStatus}/>}
     </div></div>
     {fontBulkConfirm&&<div className="kwt-bridge-restart-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setFontBulkConfirm(false)}}>
       <div className="kwt-bridge-restart-dialog" role="dialog" aria-modal="true" aria-labelledby="kwt-font-bulk-title">

@@ -9,7 +9,7 @@ const mgrWrite=(name:string,value:string)=>{try{window.localStorage.setItem('kwt
 
 // KWT_STUDIO_FONTS_V1_7_0
 // KWT_STUDIO_INSTALLER_V2_0_0
-export type StudioSection='editor'|'servers'|'translation'|'ocr'|'logs'|'settings'|'extension'|'fonts'|'installer'
+export type StudioSection='editor'|'servers'|'translation'|'ocr'|'logs'|'settings'|'extension'|'fonts'|'installer'|'chat' // KWT_LOCAL_CHAT_V2_2_0
 type EngineState={online:boolean;owned:boolean;pid:number|null;models?:string[];engine?:string}
 type Status={gemma:EngineState;ocr:EngineState;log_seq:number}
 type Settings={gemma_dir:string;prompt:string;temperature:number;max_tokens:number;ocr_mode:string;patches:number;confidence:number}

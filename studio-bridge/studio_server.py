@@ -26,6 +26,7 @@ import installer_service  # KWT_BRIDGE_EXIT_V2_1_1_SERVER: inspect active instal
 from installer_service import get as installer_get, post as installer_post  # KWT_STUDIO_INSTALLER_V2_0_0
 from chrome_extension_install import open_for_user as kwt_open_extension_guide  # KWT_CHROME_EXTENSION_GUIDE_V2_0_2
 from manager_service import kwt_bridge_shutdown_ready
+from chat_service import get as chat_get, post as chat_post, is_busy as chat_busy  # KWT_LOCAL_CHAT_V2_2_0
 from manager_service import handle_get as studio_manager_get, handle_post as studio_manager_post  # KWT_UNIFIED_V1
 from extension_service import get as extension_get, post as extension_post, EXT_RE  # KWT_EXT_SYNC_V1_3
 
@@ -544,6 +545,13 @@ class Handler(BaseHTTPRequestHandler):
                 if origin and origin not in ('http://localhost:1420','http://127.0.0.1:1420','tauri://localhost','http://tauri.localhost','https://tauri.localhost'):
                     return self._send(403,{'error':'Origin is not allowed'})
                 return self._send(200,installer_get(path))
+            if path.startswith('/api/chat/'):
+                if self.headers.get('X-KWT-Studio')!='1':
+                    return self._send(403,{'error':'Studio request header required'})
+                origin=self.headers.get('Origin','')
+                if origin and origin not in ('http://localhost:1420','http://127.0.0.1:1420','tauri://localhost','http://tauri.localhost','https://tauri.localhost'):
+                    return self._send(403,{'error':'Origin is not allowed'})
+                return self._send(200,chat_get(path,q))
             if path.startswith('/api/manager/'):
                 if self.headers.get('X-KWT-Studio')!='1':
                     return self._send(403,{'error':'Studio request header required'})
@@ -617,6 +625,8 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('글꼴 파일명이 올바르지 않습니다.')
                 return self._send(200,kwt_register_font(name,self.rfile.read(length)))
             body=self._body()
+            if path.startswith('/api/chat/'):
+                return self._send(200,chat_post(path,body))
             # KWT_FONT_BULK_V1_9_0
             if path=='/api/fonts/apply-default':
                 from font_bulk import apply_default_font
@@ -716,8 +726,9 @@ def _kwt_bridge_exit_watchdog():
             busy = busy or any(p.state in ('running', 'finalizing') for p in projects.values())
         with installer_service.LOCK:
             busy = busy or installer_service.CURRENT is not None
+        busy = busy or chat_busy()  # Keep Bridge alive during chat inference / memory compaction.
         if busy:
-            continue  # do not interrupt ZIP writes, tests, or model downloads
+            continue  # do not interrupt ZIP writes, tests, model downloads, or chat
         if not kwt_bridge_shutdown_ready():
             idle_since = None
             continue
