@@ -2,6 +2,7 @@
 // V1 runtime settings and original manager settings API remain unchanged.
 import {useCallback,useEffect,useState} from 'react'
 import {api} from './api'
+import ChatConversationSettings from './ChatConversationSettings' // KWT_UNIFIED_CHAT_V1_4
 
 export type SettingsGroup='overview'|'gemma'|'pipeline'|'ocr'|'translation'|'chat'|'typesetting'
 
@@ -12,6 +13,7 @@ type Runtime={
   // KWT_UNIFIED_ADVANCED_V1_3
   ocr:{pad_x_percent:number;pad_y_percent:number}
   translation:{max_region_count:number;max_source_chars:number;timeout_sec:number;top_k:number;top_p:number;min_p:number}
+  chat:{context_reserve:number;auto_reply_margin:number;summary_batch_messages:number;summary_chunk_budget:number;summary_output_tokens:number;summary_max_chars:number;summary_previous_chars:number;timeout_sec:number;continue_limit:number}
 }
 type Existing={gemma_dir:string;prompt:string;temperature:number;max_tokens:number;ocr_mode:string;patches:number;confidence:number}
 type Props={
@@ -31,6 +33,7 @@ const DEFAULTS:Runtime={
   pipeline:{batch_pages:3,batch_raw_mb:22,ocr_workers:1,translation_workers:1,zip_workers:1},
   ocr:{pad_x_percent:12,pad_y_percent:8},
   translation:{max_region_count:20,max_source_chars:1200,timeout_sec:120,top_k:64,top_p:0.9,min_p:0.05},
+  chat:{context_reserve:400,auto_reply_margin:512,summary_batch_messages:4,summary_chunk_budget:1150,summary_output_tokens:700,summary_max_chars:2200,summary_previous_chars:2000,timeout_sec:300,continue_limit:3},
 }
 const FIELDS=[
   {key:'context_size',label:'모델 컨텍스트 길이',min:2048,max:131072,step:1024},
@@ -47,7 +50,7 @@ const PAGE_META:Record<SettingsGroup,{label:string;hint:string}>={
   pipeline:{label:'자동 ZIP 처리',hint:'다음 ZIP 자동 처리 작업부터 반영'},
   ocr:{label:'OCR / 텍스트 검출',hint:'기존 OCR 설정 및 공통 여백 · 새로운 검출 작업부터 반영'},
   translation:{label:'번역 설정',hint:'기존 번역 프로필 및 요청별 고급 옵션 · 다음 번역 요청부터 반영'},
-  chat:{label:'로컬 채팅 / 기억',hint:'기존 로컬 채팅 설정 유지'},
+  chat:{label:'로컬 채팅 / 기억',hint:'대화별 설정 · 공통 기억 압축 및 자동 이어쓰기'},
   typesetting:{label:'이미지 처리 / 식질',hint:'기존 검수·식질 설정 유지'},
 }
 
@@ -70,7 +73,7 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
   const pipelineChange=(key:keyof Runtime['pipeline'],value:number)=>{
     setRuntime(prev=>({...prev,pipeline:{...prev.pipeline,[key]:value}}));setDirty(true);setNotice('')
   }
-  const advancedChange=(section:'ocr'|'translation',key:string,value:number)=>{
+  const advancedChange=(section:'ocr'|'translation'|'chat',key:string,value:number)=>{
     setRuntime(prev=>({...prev,[section]:{...prev[section],[key]:value}}));setDirty(true);setNotice('')
   }
   const save=async()=>{
@@ -79,15 +82,15 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
     try{
       const result=await api<{values:Runtime}>('/api/manager/runtime-settings',runtime)
       setRuntime(result.values);setDirty(false)
-      setNotice('통합 설정 저장 완료. Gemma 실행 옵션·OCR 작업자 수는 서버 재시작, OCR 여백과 번역 옵션은 새 요청부터 적용돼.')
+      setNotice('통합 설정 저장 완료. 채팅 공통 옵션은 새 메시지부터 적용되고, 기존 대화별 설정과 기록은 유지돼.')
     }catch(e){setError(e instanceof Error?e.message:String(e))}
     finally{setSaving(false)}
   }
   const reset=()=>{
-    if(selectedGroup==='overview'||selectedGroup==='chat'||selectedGroup==='typesetting')return
+    if(selectedGroup==='overview'||selectedGroup==='typesetting')return
     setRuntime(prev=>({...prev,[selectedGroup]:{...defaults[selectedGroup]}}));setDirty(true);setNotice('현재 설정 그룹 기본값을 입력했어. 저장해야 반영돼.')
   }
-  const runtimePage=['gemma','pipeline','ocr','translation'].includes(selectedGroup)
+  const runtimePage=['gemma','pipeline','ocr','translation','chat'].includes(selectedGroup) // KWT_UNIFIED_CHAT_V1_4
   return <div className="kwt-settings-tree kwt-settings-page">
     <section className="control-card kwt-settings-page-intro">
       <p className="kwt-settings-breadcrumb">환경 설정 / {PAGE_META[selectedGroup].label}</p>
@@ -169,9 +172,28 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
       <div className="kwt-tree-bottom"><span>모든 설정은 다음 새 번역 요청부터 적용돼. 실패 후 재번역 복구는 기존과 동일하게 유지해.</span><button className="primary" disabled={!ready} onClick={()=>saveLegacy('translation')}>기존 번역 설정 저장</button></div>
     </section>}
 
-    {selectedGroup==='chat'&&<section className="control-card">
-      <h2>기존 로컬 채팅 탭 유지</h2><p className="ctl-description">현재 채팅의 컨텍스트·답변 길이·기억 압축 설정과 대화 기록은 변경하지 않아. 상세 설정 통합 시 서버와 채팅 API를 함께 점검할 예정이야.</p>
-    </section>}
+    {selectedGroup==='chat'&&<>
+      {/* KWT_UNIFIED_CHAT_V1_4: global memory controls shared by all chats */}
+      <section className="control-card settings-form">
+        <h2>공통 채팅 · 기억 압축 정책</h2>
+        <p className="ctl-description">이 항목들은 전체 로컬 대화에 공통 적용돼. 현재 요청 중인 메시지는 실행 시작 시 설정으로 고정돼. 상단 '통합 설정 저장'으로 저장해 줘.</p>
+        <div className="kwt-tree-fields">
+          {([
+            ['context_reserve','입력 컨텍스트 안전 여유 (토큰)',200,1500,50],
+            ['auto_reply_margin','자동 답변 템플릿 여유 (토큰)',256,2048,64],
+            ['summary_batch_messages','한 번에 요약할 과거 메시지 수',1,10,1],
+            ['summary_chunk_budget','기억 요약 입력 예산 (추정 토큰)',500,2500,50],
+            ['summary_output_tokens','기억 요약 출력 상한 (토큰)',256,1600,64],
+            ['summary_max_chars','압축 기억 최대 보관 길이 (글자)',500,8000,100],
+            ['summary_previous_chars','재요약에 사용할 기존 기억 길이 (글자)',500,6000,100],
+            ['timeout_sec','채팅 API 응답 타임아웃 (초)',30,900,30],
+            ['continue_limit','자동 이어쓰기 최대 호출 횟수 (최초 응답 포함)',1,6,1],
+          ] as const).map(([key,label,min,max,step])=><label key={key}>{label}<input type="number" min={min} max={max} step={step} value={runtime.chat[key]} disabled={loading} onChange={e=>advancedChange('chat',key,Number(e.target.value))}/></label>)}
+        </div>
+        <p className="ctl-description">기억 요약은 이전 대화 원문을 삭제하지 않아. 단, 예산이나 최대 글자 수를 너무 작게 설정하면 과거 맥락이 줄어들 수 있어.</p>
+      </section>
+      <ChatConversationSettings serverContext={runtime.gemma.context_size}/>
+    </>}
     {selectedGroup==='typesetting'&&<section className="control-card">
       <h2>기존 식질 · 검수 설정 유지</h2><p className="ctl-description">현재 폰트 라이브러리와 검수 기본 설정을 그대로 사용해. LaMa 타일, 글자 배치, 출력 품질 및 ZIP 압축 옵션은 후속 단계에서 연결할 예정이야.</p>
     </section>}
