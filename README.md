@@ -187,50 +187,24 @@ Test-Path .\local-trans\models\big-lama.pt
 
 `True`는 파일 존재를 뜻하며, 실제 이미지 복원 품질은 Studio에서 별도로 확인해야 합니다. **`DOWNLOAD_LAMA.bat`이 없는 경우** 공개 저장소에 LaMa 자동 다운로드 패치 V1.0.7이 아직 반영되지 않은 것입니다. 스크립트가 없는 상태에서 위 명령을 실행하지 마세요. 먼저 패치를 적용하고 Git에 커밋/Push해야 신규 사용자도 이용할 수 있습니다.
 
-### 7. Gemma 4 번역 서버 준비 (현재 수동 설치 / 자동 설치기 미포함)
+### 7. Gemma 번역 서버 자동 설치 (Windows / NVIDIA CUDA)
 
-**중요:** 현재 공개 저장소에는 Gemma GGUF 모델, llama.cpp 실행 파일, MTP draft 모델, `Launch.ps1` 및 **Gemma 자동 설치기**가 포함되지 않습니다. 이 단계는 아직 BAT 하나로 자동 설치되지 않습니다. 서버 설치를 완료하기 전에는 Studio의 번역 기능이 동작하지 않습니다.
+Gemma 4와 llama.cpp는 Python `requirements.txt`만으로 설치되지 않습니다. 이 저장소는 모델 및 외부 실행 파일을 Git에 포함하지 않으며, 설치 스크립트가 공식 배포처에서 다운로드합니다.
 
-#### 7-1. 준비할 구성요소
-
-| 구성요소 | 역할 | 확인 사항 |
-|---|---|---|
-| `llama-server.exe` | OpenAI 호환 로컬 번역 API | https://github.com/ggml-org/llama.cpp/releases 에서 Windows 및 GPU에 맞는 빌드 확보 |
-| Gemma 4 12B GGUF | 실제 일본어→한국어 번역 모델 | 사용 가능한 GGUF 배포본의 출처·라이선스·양자화·VRAM 요구량 확인 |
-| MTP draft GGUF (선택) | 호환 환경에서 추론 가속 | 서버/모델 조합을 검증한 경우에만 사용. 기본 번역 동작에는 필수 아님 |
-| 실행 스크립트 | 서버 시작/중지 | 사용자 설치 경로와 모델 파일명에 맞춰 설정 필요 |
-
-**기본 설치 경로 예시:** `C:\AI\Gemma4MTP` (개발자 환경의 경로이며 **필수 경로는 아닙니다**). 다른 드라이브나 폴더에 설치해도 됩니다. 예시 구조:
-
-```text
-C:\AI\Gemma4MTP\
-  llama-bin\llama-server.exe
-  models\<사용자가 선택한 Gemma4-12B GGUF 파일>
-  Launch.ps1             # 사용자 환경에 맞춰 별도 준비
-```
-
-현재 공개 저장소는 모델의 **정확한 다운로드 URL과 SHA-256, llama.cpp CUDA 릴리스 버전, Launch.ps1 자동 생성 기능을 제공하지 않습니다.** 검증되지 않은 파일명/다운로드 주소를 자동 설치 명령으로 안내하지 않습니다. 추후 Gemma4MTP 설치기를 공개 저장소에 통합하면 이 절을 자동 설치 단계로 교체할 예정입니다.
-
-#### 7-2. 기존 설치가 있는 사용자
-
-기존에 Gemma4MTP를 설치했다면 **재설치하지 마세요.** 기존 서버를 실행한 뒤 Studio의 **AI 서버 관리**에서 실제 설치 폴더를 선택합니다. 모델 파일명과 실행 옵션은 기존 `Launch.ps1`을 따릅니다.
-
-#### 7-3. 서버 연결 확인
-
-기본 연결값:
-
-- API: `http://127.0.0.1:18080/v1`
-- 모델 목록: `http://127.0.0.1:18080/v1/models`
-- Studio 기본 모델 ID: `gemma4-12b-local` (실제 서버가 노출하는 모델 ID와 일치해야 함)
-- 바인딩 주소: 외부 공개를 피하도록 `127.0.0.1` 권장
-
-서버를 **실행한 다음** PowerShell에서 확인합니다.
+기본 설치 경로는 **`C:\AI\Gemma4MTP`**로 고정되어 있습니다. 다른 드라이브에 설치하려면 스크립트를 수정해야 합니다. 이미 설치되어 있는 모델과 실행 파일은 재사용하며, 기존 `Launch.ps1`은 수정하지 않습니다.
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:18080/v1/models
+.\SETUP_GEMMA.bat
+.\CHECK_GEMMA.bat
+.\RUN_GEMMA.bat
 ```
 
-정상 응답으로 모델 목록이 나오면 연결 가능 상태입니다. 응답이 없으면 서버 실행 여부, 포트, 방화벽, 모델 로딩 오류를 먼저 확인하세요. MTP 기능은 선택 사항이며, 호환 모델과 서버 구성이 검증된 경우에만 활성화합니다.
+- `SETUP_GEMMA.bat`: Windows CUDA 12 llama.cpp 릴리스와 [HauhauCS Balanced Q4_K_M GGUF](https://huggingface.co/HauhauCS/Gemma4-12B-QAT-Uncensored-HauhauCS-Balanced) 다운로드 (주 모델 약 7.4GB). 주 모델은 SHA-256을 검증합니다.
+- `CHECK_GEMMA.bat`: 설치 파일과 실행 중인 서버의 `/v1/models` 응답 확인.
+- `RUN_GEMMA.bat`: `127.0.0.1:18080`에서 `gemma4-12b-local` ID로 서버 실행. 실행 중에는 콘솔 창을 닫지 마세요.
+- MTP Draft 모델이 필요하면 `SETUP_GEMMA.bat --mtp`를 별도로 실행하세요. 기본 실행 BAT는 MTP를 활성화하지 않습니다.
+
+Studio의 **AI 서버 관리**에서 `C:\AI\Gemma4MTP` 실행 폴더를 지정합니다. API는 `http://127.0.0.1:18080/v1`이며 `http://127.0.0.1:18080/v1/models`에서 상태를 확인할 수 있습니다. 설치 과정에서 인터넷 접속, 충분한 저장 공간, NVIDIA 드라이버가 필요합니다. CUDA DLL 호환성은 PC 환경에 따라 추가 조치가 필요할 수 있습니다. 모델 배포처의 라이선스를 확인하세요.
 
 ### 8. Studio 실행
 
