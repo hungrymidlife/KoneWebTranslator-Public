@@ -9,7 +9,7 @@ import FontManager from './FontManager'
 import SetupCenter from './SetupCenter'
 import ChatCenter from './ChatCenter' // KWT_LOCAL_CHAT_V2_2_0
 // KWT_STUDIO_INSTALLER_V2_0_0
-import {LayoutDashboard,Server,Languages,ScanText,Terminal,Settings2,Menu,Type,Download,MessageCircle} from 'lucide-react'
+import {LayoutDashboard,Server,Terminal,Settings2,Menu,Type,Download,MessageCircle} from 'lucide-react' // KWT_UNIFIED_STABILITY_V1_6
 import {api,imageUrl,fontFileUrl,type FontLibrary,type Project,type PageData,type PageList,type LayerData,type ZipItem} from './api'
 
 // KWT_STUDIO_LAYER_CRUD_V1_6_1
@@ -102,11 +102,15 @@ export default function App(){
   },[])
 
   const [connected,setConnected]=useState(false)
-  const [section,setSection]=useState<StudioSection>(()=>strPref('section','editor') as StudioSection)
+  const [section,setSection]=useState<StudioSection>(()=>{
+    const last=strPref('section','editor')
+    return (last==='ocr'||last==='translation'?'settings':last) as StudioSection
+  })
   const [navExpanded,setNavExpanded]=useState(()=>boolPref('navExpanded',true))
   // KWT_UNIFIED_NAV_TREE_V1_1: left navigation tree state (UI-only preferences).
   const [settingsGroup,setSettingsGroup]=useState<SettingsGroup>(()=>{
-    const stored=strPref('settingsGroup','overview')
+    const previous=strPref('section','')
+    const stored=strPref('settingsGroup',previous==='ocr'||previous==='translation'?previous:'overview')
     return (['overview','gemma','pipeline','ocr','translation','chat','typesetting'] as string[]).includes(stored)
       ? stored as SettingsGroup : 'overview'
   })
@@ -449,8 +453,6 @@ export default function App(){
           ['editor','번역 · 검수 · 편집',LayoutDashboard],
           ['servers','AI 서버 관리',Server],
           ['chat','로컬 채팅',MessageCircle],
-          ['translation','번역 설정',Languages],
-          ['ocr','OCR 설정',ScanText],
           ['fonts','폰트 관리',Type],
           ['installer','설치 · 환경 점검',Download],
           ['extension','웹 확장앱 관리',Puzzle],

@@ -58,42 +58,91 @@ const PAGE_META:Record<SettingsGroup,{label:string;hint:string}>={
 }
 
 export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,saveLegacy,ready,mode,setMode,browseGemma,gemmaOnline}:Props){
+  // KWT_UNIFIED_STABILITY_V1_6: group-specific drafts and conflict-safe saves.
+  const GROUPS=['gemma','pipeline','ocr','translation','chat','typesetting'] as const
+  type GroupKey=typeof GROUPS[number]
+  const DRAFT_KEY='kwt-studio-unified-settings-v1.6-draft'
   const [runtime,setRuntime]=useState<Runtime>(DEFAULTS)
+  const [saved,setSaved]=useState<Runtime>(DEFAULTS)
   const [defaults,setDefaults]=useState<Runtime>(DEFAULTS)
+  const [revision,setRevision]=useState('')
   const [loading,setLoading]=useState(true)
   const [saving,setSaving]=useState(false)
-  const [dirty,setDirty]=useState(false)
   const [error,setError]=useState('')
   const [notice,setNotice]=useState('')
-  const load=useCallback(async()=>{
-    const result=await api<{values:Runtime;defaults:Runtime;stored:boolean}>('/api/manager/runtime-settings')
-    setRuntime(result.values);setDefaults(result.defaults);setDirty(false)
+  const load=useCallback(async(restoreDraft=false)=>{
+    const result=await api<{values:Runtime;defaults:Runtime;stored:boolean;revision:string}>('/api/manager/runtime-settings')
+    let next=result.values
+    let expectedRevision=result.revision
+    if(restoreDraft){
+      try{
+        const stored=JSON.parse(window.sessionStorage.getItem(DRAFT_KEY)||'null') as {revision?:string;draft?:Runtime}|null
+        if(stored?.revision && stored.draft?.schema_version===1 && GROUPS.every(g=>stored.draft?.[g]!==undefined)){
+          next=stored.draft
+          if(stored.revision!==result.revision){
+            // Preserve the draft, but require explicit reload instead of overwriting newer data.
+            expectedRevision=stored.revision
+            setError('다른 창에서 저장값이 변경됐어. 이전 미저장 입력은 보존했지만 충돌 상태라 저장할 수 없어. 내용을 확인하고 저장값 다시 불러오기를 선택해 줘.')
+          }
+        }else if(stored){window.sessionStorage.removeItem(DRAFT_KEY)}
+      }catch{ /* ignore invalid drafts, never stop settings from loading */ }
+    }else{
+      try{window.sessionStorage.removeItem(DRAFT_KEY)}catch{}
+    }
+    setRuntime(next);setSaved(result.values);setDefaults(result.defaults);setRevision(expectedRevision)
   },[])
-  useEffect(()=>{void load().catch(e=>setError(String(e))).finally(()=>setLoading(false))},[load])
+  useEffect(()=>{void load(true).catch(e=>setError(String(e))).finally(()=>setLoading(false))},[load])
+  const dirtyGroups=GROUPS.filter(g=>JSON.stringify(runtime[g])!==JSON.stringify(saved[g]))
+  const currentGroup=selectedGroup==='overview'?null:selectedGroup as GroupKey
+  const currentDirty=currentGroup!==null&&dirtyGroups.includes(currentGroup)
+  useEffect(()=>{
+    if(loading)return
+    try{
+      if(dirtyGroups.length)window.sessionStorage.setItem(DRAFT_KEY,JSON.stringify({revision,draft:runtime}))
+      else window.sessionStorage.removeItem(DRAFT_KEY)
+    }catch{/* session storage may be unavailable */}
+  },[runtime,revision,loading,saved])
   const gemmaChange=(key:keyof Runtime['gemma'],value:number|string)=>{
-    setRuntime(prev=>({...prev,gemma:{...prev.gemma,[key]:value}}));setDirty(true);setNotice('')
+    setRuntime(prev=>({...prev,gemma:{...prev.gemma,[key]:value}}));setNotice('');setError('')
   }
   const pipelineChange=(key:keyof Runtime['pipeline'],value:number)=>{
-    setRuntime(prev=>({...prev,pipeline:{...prev.pipeline,[key]:value}}));setDirty(true);setNotice('')
+    setRuntime(prev=>({...prev,pipeline:{...prev.pipeline,[key]:value}}));setNotice('');setError('')
   }
   const advancedChange=(section:'ocr'|'translation'|'chat'|'typesetting',key:string,value:number)=>{
-    setRuntime(prev=>({...prev,[section]:{...prev[section],[key]:value}}));setDirty(true);setNotice('')
+    setRuntime(prev=>({...prev,[section]:{...prev[section],[key]:value}}));setNotice('');setError('')
   }
   const save=async()=>{
-    if(saving||loading)return
+    if(saving||loading||!currentGroup||!currentDirty)return
     setSaving(true);setError('');setNotice('')
     try{
-      const result=await api<{values:Runtime}>('/api/manager/runtime-settings',runtime)
-      setRuntime(result.values);setDirty(false)
-      setNotice('통합 설정 저장 완료. 이미지·식질 옵션은 다음 ZIP 또는 메타데이터가 없는 검수 페이지부터 반영돼.')
+      // Post only the selected group's draft; preserve other unsaved groups locally.
+      const request={...saved,[currentGroup]:runtime[currentGroup],__expected_revision:revision}
+      await api<{values:Runtime}>('/api/manager/runtime-settings',request)
+      const fresh=await api<{values:Runtime;revision:string}>('/api/manager/runtime-settings')
+      setSaved(fresh.values);setRevision(fresh.revision)
+      setRuntime(prev=>({...prev,[currentGroup]:fresh.values[currentGroup]}))
+      setNotice('이 그룹을 저장했어. 다른 그룹의 미저장 변경은 그대로 유지돼. 실행 옵션은 해당 서버 재시작 후 적용돼.')
     }catch(e){setError(e instanceof Error?e.message:String(e))}
     finally{setSaving(false)}
   }
   const reset=()=>{
-    if(selectedGroup==='overview')return
-    setRuntime(prev=>({...prev,[selectedGroup]:{...defaults[selectedGroup]}}));setDirty(true);setNotice('현재 설정 그룹 기본값을 입력했어. 저장해야 반영돼.')
+    if(!currentGroup)return
+    setRuntime(prev=>({...prev,[currentGroup]:{...defaults[currentGroup]}}))
+    setNotice('이 그룹에 기본값을 입력했어. 저장 버튼을 눌러야 반영돼.');setError('')
   }
-  const runtimePage=['gemma','pipeline','ocr','translation','chat','typesetting'].includes(selectedGroup) // KWT_UNIFIED_CHAT_V1_4
+  const revert=()=>{
+    if(!currentGroup)return
+    setRuntime(prev=>({...prev,[currentGroup]:{...saved[currentGroup]}}))
+    setNotice('이 그룹의 미저장 변경을 취소했어.');setError('')
+  }
+  const reload=async()=>{
+    if(dirtyGroups.length&&!window.confirm('미저장된 통합 설정 변경이 모두 사라져. 저장된 설정을 다시 불러올까?'))return
+    setLoading(true);setError('');setNotice('')
+    try{await load(false);setNotice('디스크의 최신 설정을 불러왔어.')}
+    catch(e){setError(e instanceof Error?e.message:String(e))}
+    finally{setLoading(false)}
+  }
+  const runtimePage=selectedGroup!=='overview'
   return <div className="kwt-settings-tree kwt-settings-page">
     <section className="control-card kwt-settings-page-intro">
       <p className="kwt-settings-breadcrumb">환경 설정 / {PAGE_META[selectedGroup].label}</p>
@@ -103,24 +152,25 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
       {error&&<div className="control-alert error">{error}</div>}
       {notice&&<p className="kwt-tree-notice">{notice}</p>}
       {runtimePage&&<div className="kwt-tree-toolbar">
-        <span>{dirty?'저장되지 않은 통합 설정 변경 사항 있음':'통합 설정 저장 상태 최신'}</span>
-        <button className="secondary" disabled={loading||saving} onClick={reset}>기본값 입력</button>
-        <button className="secondary" disabled={loading||saving} onClick={()=>{setLoading(true);setError('');void load().catch(e=>setError(String(e))).finally(()=>setLoading(false))}}>저장값 다시 불러오기</button>
-        <button className="primary" disabled={!dirty||loading||saving} onClick={()=>void save()}>{saving?'저장 중...':'통합 설정 저장'}</button>
+        <span aria-live="polite">{currentDirty?'이 그룹에 미저장 변경이 있어.':'이 그룹은 저장된 최신값이야.'}{dirtyGroups.length>Number(currentDirty)?` · 다른 그룹 ${dirtyGroups.length-Number(currentDirty)}개 미저장`:''}</span>
+        <button className="secondary" disabled={loading||saving} onClick={reset}>이 그룹 기본값</button>
+        <button className="secondary" disabled={!currentDirty||loading||saving} onClick={revert}>이 그룹 변경 취소</button>
+        <button className="secondary" disabled={loading||saving} onClick={()=>void reload()}>저장값 다시 불러오기</button>
+        <button className="primary" disabled={!currentDirty||loading||saving} onClick={()=>void save()}>{saving?'저장 중...':'현재 그룹 공통값 저장'}</button>
       </div>}
     </section>
 
     {selectedGroup==='overview'&&<section className="control-card">
       <h2>왼쪽 트리에서 설정을 선택해 줘</h2>
       <p className="ctl-description">환경 설정 아래의 각 하위 항목을 클릭하면 오른쪽에 해당 설정만 표시돼. 기존 AI 서버 관리·OCR·번역·채팅 탭은 그대로 유지해.</p>
-      <p className="ctl-description">현재 1단계에서 실제로 연결된 값은 Gemma 실행 옵션과 ZIP 배치 크기야. OCR/번역은 기존 저장 API를 공유하고, 채팅/식질의 상세 통합과 작업자 병렬화는 후속 단계에서 진행해.</p>
+      <p className="ctl-description">현재 AI 서버·자동 ZIP·OCR·번역·채팅 기억·식질의 공통 옵션이 연결되어 있어. 각 그룹은 개별 저장되고, 다른 그룹에서 입력한 미저장 변경은 유지돼. 기존 OCR/번역의 프롬프트와 검출 신뢰도는 별도 설정 저장소를 계속 사용해.</p>
     </section>}
 
     {selectedGroup==='gemma'&&<section className="control-card settings-form">
       {gemmaOnline&&<p className="kwt-tree-warning">Gemma 서버가 이미 실행 중이야. 저장한 실행 옵션은 서버 재시작 후 적용돼.</p>}
       <div className="kwt-tree-fields">
-        {FIELDS.map(field=><label key={field.key}>{field.label}<input type="number" min={field.min} max={field.max} step={field.step} value={runtime.gemma[field.key]} disabled={loading} onChange={e=>gemmaChange(field.key,Number(e.target.value))}/></label>)}
-        <label>Flash Attention<select value={runtime.gemma.flash_attention} disabled={loading} onChange={e=>gemmaChange('flash_attention',e.target.value)}><option value="on">ON</option><option value="off">OFF</option><option value="auto">AUTO</option></select></label>
+        {FIELDS.map(field=><label key={field.key}>{field.label}<input type="number" min={field.min} max={field.max} step={field.step} value={runtime.gemma[field.key]} disabled={loading||saving} onChange={e=>gemmaChange(field.key,Number(e.target.value))}/></label>)}
+        <label>Flash Attention<select value={runtime.gemma.flash_attention} disabled={loading||saving} onChange={e=>gemmaChange('flash_attention',e.target.value)}><option value="on">ON</option><option value="off">OFF</option><option value="auto">AUTO</option></select></label>
         <label>서버 실행 모드<select value={mode} onChange={e=>setMode(e.target.value as 'MTP'|'Normal')}><option value="Normal">Normal</option><option value="MTP">MTP</option></select></label>
       </div>
       <p className="ctl-description">컨텍스트(-c), GPU(-ngl), Flash Attention(-fa), 슬롯(-np), 샘플링 기본값을 ai/Launch.ps1 실행에 연결해. 슬롯 증가만으로 번역 요청이 병렬화되지는 않아.</p>
@@ -130,12 +180,12 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
 
     {selectedGroup==='pipeline'&&<section className="control-card settings-form">
       <div className="kwt-tree-fields">
-        <label>배치 이미지 수<input type="number" min={1} max={20} step={1} value={runtime.pipeline.batch_pages} disabled={loading} onChange={e=>pipelineChange('batch_pages',Number(e.target.value))}/></label>
-        <label>배치 최대 원본 데이터 (MB)<input type="number" min={4} max={22} step={1} value={runtime.pipeline.batch_raw_mb} disabled={loading} onChange={e=>pipelineChange('batch_raw_mb',Number(e.target.value))}/></label>
+        <label>배치 이미지 수<input type="number" min={1} max={20} step={1} value={runtime.pipeline.batch_pages} disabled={loading||saving} onChange={e=>pipelineChange('batch_pages',Number(e.target.value))}/></label>
+        <label>배치 최대 원본 데이터 (MB)<input type="number" min={4} max={22} step={1} value={runtime.pipeline.batch_raw_mb} disabled={loading||saving} onChange={e=>pipelineChange('batch_raw_mb',Number(e.target.value))}/></label>
         {/* KWT_UNIFIED_WORKERS_V1_2: real bounded task pools */}
-        <label>OCR 동시 배치 작업 수 (1~2)<input type="number" min={1} max={2} step={1} value={runtime.pipeline.ocr_workers} disabled={loading} onChange={e=>pipelineChange('ocr_workers',Number(e.target.value))}/></label>
-        <label>번역 동시 페이지 작업 수 (1~4)<input type="number" min={1} max={4} step={1} value={runtime.pipeline.translation_workers} disabled={loading} onChange={e=>pipelineChange('translation_workers',Number(e.target.value))}/></label>
-        <label>동시 ZIP 처리 수 (1~2)<input type="number" min={1} max={2} step={1} value={runtime.pipeline.zip_workers} disabled={loading} onChange={e=>pipelineChange('zip_workers',Number(e.target.value))}/></label>
+        <label>OCR 동시 배치 작업 수 (1~2)<input type="number" min={1} max={2} step={1} value={runtime.pipeline.ocr_workers} disabled={loading||saving} onChange={e=>pipelineChange('ocr_workers',Number(e.target.value))}/></label>
+        <label>번역 동시 페이지 작업 수 (1~4)<input type="number" min={1} max={4} step={1} value={runtime.pipeline.translation_workers} disabled={loading||saving} onChange={e=>pipelineChange('translation_workers',Number(e.target.value))}/></label>
+        <label>동시 ZIP 처리 수 (1~2)<input type="number" min={1} max={2} step={1} value={runtime.pipeline.zip_workers} disabled={loading||saving} onChange={e=>pipelineChange('zip_workers',Number(e.target.value))}/></label>
       </div>
       <p className="ctl-description">OCR·번역 작업 수는 OCR 서버를 재시작해야 반영돼. ZIP 동시 작업 수는 다음 자동 ZIP 실행부터 적용돼. Hayai 인식 호출은 단일 자식 프로세스 내부에서 안전하게 직렬화돼.</p>
 <p className="ctl-description">Gemma 번역 병렬 처리 성능을 높이려면 AI 서버의 병렬 요청 슬롯(-np)도 함께 늘리고 서버를 재시작해야 해. GPU 메모리 부족 시 작업 수를 1로 되돌려 줘.</p>
@@ -150,8 +200,8 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
       <p className="ctl-description">OCR 인식 영역 여백은 아래 통합 설정 저장으로 적용되고, 패치 크기·검출 신뢰도는 기존 OCR 설정 저장을 사용해.</p>
       {/* KWT_UNIFIED_ADVANCED_V1_3: effective on NEW jobs, no OCR restart */}
       <div className="kwt-tree-fields">
-        <label>OCR 좌우 여백 (각 방향 %)<input type="number" min={0} max={40} step={1} value={runtime.ocr.pad_x_percent} disabled={loading} onChange={e=>advancedChange('ocr','pad_x_percent',Number(e.target.value))}/></label>
-        <label>OCR 상하 여백 (각 방향 %)<input type="number" min={0} max={40} step={1} value={runtime.ocr.pad_y_percent} disabled={loading} onChange={e=>advancedChange('ocr','pad_y_percent',Number(e.target.value))}/></label>
+        <label>OCR 좌우 여백 (각 방향 %)<input type="number" min={0} max={40} step={1} value={runtime.ocr.pad_x_percent} disabled={loading||saving} onChange={e=>advancedChange('ocr','pad_x_percent',Number(e.target.value))}/></label>
+        <label>OCR 상하 여백 (각 방향 %)<input type="number" min={0} max={40} step={1} value={runtime.ocr.pad_y_percent} disabled={loading||saving} onChange={e=>advancedChange('ocr','pad_y_percent',Number(e.target.value))}/></label>
       </div>
       <div className="kwt-tree-bottom"><span>값이 지정되지 않은 새 OCR 요청에 공통 여백이 적용돼. 개별 요청이 지정한 여백은 우선돼.</span><button className="primary" disabled={!ready} onClick={()=>saveLegacy('ocr')}>기존 OCR 설정 저장</button></div>
     </section>}
@@ -164,12 +214,12 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
       </div>
       {/* KWT_UNIFIED_ADVANCED_V1_3: translation batch/request settings */}
       <div className="kwt-tree-fields">
-        <label>번역 영역 묶음 최대 개수<input type="number" min={1} max={20} step={1} value={runtime.translation.max_region_count} disabled={loading} onChange={e=>advancedChange('translation','max_region_count',Number(e.target.value))}/></label>
-        <label>번역 묶음 최대 원문 글자<input type="number" min={100} max={1200} step={50} value={runtime.translation.max_source_chars} disabled={loading} onChange={e=>advancedChange('translation','max_source_chars',Number(e.target.value))}/></label>
-        <label>번역 요청 타임아웃 (초)<input type="number" min={30} max={600} step={10} value={runtime.translation.timeout_sec} disabled={loading} onChange={e=>advancedChange('translation','timeout_sec',Number(e.target.value))}/></label>
-        <label>번역 요청별 Top-K<input type="number" min={0} max={200} step={1} value={runtime.translation.top_k} disabled={loading} onChange={e=>advancedChange('translation','top_k',Number(e.target.value))}/></label>
-        <label>번역 요청별 Top-P<input type="number" min={0.01} max={1} step={0.01} value={runtime.translation.top_p} disabled={loading} onChange={e=>advancedChange('translation','top_p',Number(e.target.value))}/></label>
-        <label>번역 요청별 Min-P<input type="number" min={0} max={1} step={0.01} value={runtime.translation.min_p} disabled={loading} onChange={e=>advancedChange('translation','min_p',Number(e.target.value))}/></label>
+        <label>번역 영역 묶음 최대 개수<input type="number" min={1} max={20} step={1} value={runtime.translation.max_region_count} disabled={loading||saving} onChange={e=>advancedChange('translation','max_region_count',Number(e.target.value))}/></label>
+        <label>번역 묶음 최대 원문 글자<input type="number" min={100} max={1200} step={50} value={runtime.translation.max_source_chars} disabled={loading||saving} onChange={e=>advancedChange('translation','max_source_chars',Number(e.target.value))}/></label>
+        <label>번역 요청 타임아웃 (초)<input type="number" min={30} max={600} step={10} value={runtime.translation.timeout_sec} disabled={loading||saving} onChange={e=>advancedChange('translation','timeout_sec',Number(e.target.value))}/></label>
+        <label>번역 요청별 Top-K<input type="number" min={0} max={200} step={1} value={runtime.translation.top_k} disabled={loading||saving} onChange={e=>advancedChange('translation','top_k',Number(e.target.value))}/></label>
+        <label>번역 요청별 Top-P<input type="number" min={0.01} max={1} step={0.01} value={runtime.translation.top_p} disabled={loading||saving} onChange={e=>advancedChange('translation','top_p',Number(e.target.value))}/></label>
+        <label>번역 요청별 Min-P<input type="number" min={0} max={1} step={0.01} value={runtime.translation.min_p} disabled={loading||saving} onChange={e=>advancedChange('translation','min_p',Number(e.target.value))}/></label>
       </div>
       <p className="ctl-description">통합 설정은 상단 '통합 설정 저장'으로 저장해. 기존 프롬프트와 Temperature/출력 토큰은 아래 '기존 번역 설정 저장' 버튼으로 별도 저장해.</p>
       <div className="kwt-tree-bottom"><span>모든 설정은 다음 새 번역 요청부터 적용돼. 실패 후 재번역 복구는 기존과 동일하게 유지해.</span><button className="primary" disabled={!ready} onClick={()=>saveLegacy('translation')}>기존 번역 설정 저장</button></div>
@@ -191,7 +241,7 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
             ['summary_previous_chars','재요약에 사용할 기존 기억 길이 (글자)',500,6000,100],
             ['timeout_sec','채팅 API 응답 타임아웃 (초)',30,900,30],
             ['continue_limit','자동 이어쓰기 최대 호출 횟수 (최초 응답 포함)',1,6,1],
-          ] as const).map(([key,label,min,max,step])=><label key={key}>{label}<input type="number" min={min} max={max} step={step} value={runtime.chat[key]} disabled={loading} onChange={e=>advancedChange('chat',key,Number(e.target.value))}/></label>)}
+          ] as const).map(([key,label,min,max,step])=><label key={key}>{label}<input type="number" min={min} max={max} step={step} value={runtime.chat[key]} disabled={loading||saving} onChange={e=>advancedChange('chat',key,Number(e.target.value))}/></label>)}
         </div>
         <p className="ctl-description">기억 요약은 이전 대화 원문을 삭제하지 않아. 단, 예산이나 최대 글자 수를 너무 작게 설정하면 과거 맥락이 줄어들 수 있어.</p>
       </section>
@@ -201,21 +251,21 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
       {/* KWT_UNIFIED_IMAGE_V1_5: settings shared by automatic ZIP and review */}
       <h2>LaMa 배경 복원</h2>
       <div className="kwt-tree-fields">
-        <label>LaMa 타일 최대 길이 (px)<input type="number" min={512} max={1024} step={64} value={runtime.typesetting.lama_tile_size} disabled={loading} onChange={e=>advancedChange('typesetting','lama_tile_size',Number(e.target.value))}/></label>
-        <label>LaMa 타일 주변 문맥 (px)<input type="number" min={0} max={256} step={8} value={runtime.typesetting.lama_tile_context} disabled={loading} onChange={e=>advancedChange('typesetting','lama_tile_context',Number(e.target.value))}/></label>
+        <label>LaMa 타일 최대 길이 (px)<input type="number" min={512} max={1024} step={64} value={runtime.typesetting.lama_tile_size} disabled={loading||saving} onChange={e=>advancedChange('typesetting','lama_tile_size',Number(e.target.value))}/></label>
+        <label>LaMa 타일 주변 문맥 (px)<input type="number" min={0} max={256} step={8} value={runtime.typesetting.lama_tile_context} disabled={loading||saving} onChange={e=>advancedChange('typesetting','lama_tile_context',Number(e.target.value))}/></label>
       </div>
       <h2>자동 식질 및 검수 렌더링</h2>
       <div className="kwt-tree-fields">
-        <label>자동 최소 글꼴 크기 (px)<input type="number" min={8} max={48} step={1} value={runtime.typesetting.typeset_min_font_size} disabled={loading} onChange={e=>advancedChange('typesetting','typeset_min_font_size',Number(e.target.value))}/></label>
-        <label>자동 최대 글꼴 크기 (px)<input type="number" min={8} max={96} step={1} value={runtime.typesetting.typeset_max_font_size} disabled={loading} onChange={e=>advancedChange('typesetting','typeset_max_font_size',Number(e.target.value))}/></label>
-        <label>자동 내부 여백 (%)<input type="number" min={0} max={15} step={0.5} value={runtime.typesetting.typeset_padding_percent} disabled={loading} onChange={e=>advancedChange('typesetting','typeset_padding_percent',Number(e.target.value))}/></label>
-        <label>글자 행간 배율<input type="number" min={1} max={1.8} step={0.01} value={runtime.typesetting.typeset_line_height_ratio} disabled={loading} onChange={e=>advancedChange('typesetting','typeset_line_height_ratio',Number(e.target.value))}/></label>
+        <label>자동 최소 글꼴 크기 (px)<input type="number" min={8} max={48} step={1} value={runtime.typesetting.typeset_min_font_size} disabled={loading||saving} onChange={e=>advancedChange('typesetting','typeset_min_font_size',Number(e.target.value))}/></label>
+        <label>자동 최대 글꼴 크기 (px)<input type="number" min={8} max={96} step={1} value={runtime.typesetting.typeset_max_font_size} disabled={loading||saving} onChange={e=>advancedChange('typesetting','typeset_max_font_size',Number(e.target.value))}/></label>
+        <label>자동 내부 여백 (%)<input type="number" min={0} max={15} step={0.5} value={runtime.typesetting.typeset_padding_percent} disabled={loading||saving} onChange={e=>advancedChange('typesetting','typeset_padding_percent',Number(e.target.value))}/></label>
+        <label>글자 행간 배율<input type="number" min={1} max={1.8} step={0.01} value={runtime.typesetting.typeset_line_height_ratio} disabled={loading||saving} onChange={e=>advancedChange('typesetting','typeset_line_height_ratio',Number(e.target.value))}/></label>
       </div>
       <p className="ctl-description">수동 레이어에 직접 지정한 글꼴 크기·좌표는 변경되지 않아. 행간 배율은 수동 레이어의 줄 간격에도 반영돼.</p>
       <h2>결과 이미지와 ZIP 저장</h2>
       <div className="kwt-tree-fields">
-        <label>JPEG·WebP 저장 품질<input type="number" min={60} max={100} step={1} value={runtime.typesetting.output_image_quality} disabled={loading} onChange={e=>advancedChange('typesetting','output_image_quality',Number(e.target.value))}/></label>
-        <label>ZIP 압축 수준<input type="number" min={0} max={9} step={1} value={runtime.typesetting.zip_compression_level} disabled={loading} onChange={e=>advancedChange('typesetting','zip_compression_level',Number(e.target.value))}/></label>
+        <label>JPEG·WebP 저장 품질<input type="number" min={60} max={100} step={1} value={runtime.typesetting.output_image_quality} disabled={loading||saving} onChange={e=>advancedChange('typesetting','output_image_quality',Number(e.target.value))}/></label>
+        <label>ZIP 압축 수준<input type="number" min={0} max={9} step={1} value={runtime.typesetting.zip_compression_level} disabled={loading||saving} onChange={e=>advancedChange('typesetting','zip_compression_level',Number(e.target.value))}/></label>
       </div>
       <p className="ctl-description">자동 처리 시작 시 프로필을 고정해 각 페이지 메타데이터에 기록해. 검수 화면에서 다시 그릴 때는 해당 기록을 재사용하므로, 저장 후 설정을 바꿔도 기존 페이지의 자동 레이아웃은 변하지 않아. 기존 페이지 메타데이터에 설정 기록이 없으면 현재 공통 설정을 사용해.</p>
       <p className="ctl-description">PNG는 무손실로 저장되고, 품질 수치는 JPEG·WebP에만 적용돼. 이미 완성된 ZIP은 설정 저장만으로 다시 압축되지 않아.</p>
