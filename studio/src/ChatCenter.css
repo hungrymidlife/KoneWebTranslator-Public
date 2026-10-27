@@ -68,3 +68,16 @@
 .kwt-chat-actions .kwt-chat-thinking-toggle{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;padding:7px 11px;font-size:12px;font-weight:650;color:#b5c2d6;border-color:#4b596c;background:#202c3d}
 .kwt-chat-actions .kwt-chat-thinking-toggle.active{color:#e1f2ff;background:#165b82;border-color:#4299c4}
 .kwt-chat-actions .kwt-chat-thinking-toggle:disabled{opacity:.45;cursor:default}
+
+/* KWT_CHAT_DELETE_CONFIRM_V2_4_1: in-app destructive action confirmation. */
+.kwt-chat-delete-backdrop{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.72);padding:18px;box-sizing:border-box}
+.kwt-chat-delete-dialog{width:min(420px,100%);background:#192331;border:1px solid #4b5b6f;border-radius:14px;padding:23px;color:#e5ecf7;box-shadow:0 20px 75px rgba(0,0,0,.55);box-sizing:border-box}
+.kwt-chat-delete-dialog h3{margin:0 0 11px;font-size:17px;color:#fff}
+.kwt-chat-delete-dialog p{margin:0 0 20px;font-size:13px;line-height:1.65;color:#c4cfdf;overflow-wrap:anywhere}
+.kwt-chat-delete-dialog strong{color:#fff}
+.kwt-chat-delete-dialog .kwt-chat-delete-error{color:#ff9e9e}
+.kwt-chat-delete-buttons{display:flex;justify-content:flex-end;gap:9px}
+.kwt-chat-delete-buttons button{cursor:pointer;border-radius:9px;border:1px solid #596a80;background:#283648;color:#e0e9f5;font:inherit;padding:9px 17px}
+.kwt-chat-delete-buttons button.danger{border-color:#b94848;background:#ae3939;color:#fff}
+.kwt-chat-delete-buttons button:disabled{cursor:default;opacity:.55}
+.kwt-chat-delete-buttons button:focus-visible{outline:2px solid #83cfff;outline-offset:3px}
