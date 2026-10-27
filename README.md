@@ -156,23 +156,17 @@ cd ..
 
 이 파일이 없는 이전 버전은 `.\local-server\Install_Hayai_OCR.bat`을 실행합니다. 별도 `local-server/.venv-hayai` 환경에 CUDA PyTorch와 `hayai-ocr==2.2.0` 등을 설치합니다. 최초 OCR 시 추가 모델 다운로드가 발생할 수 있습니다.
 
-### 5. Comic Text Detector 모델 설치
+### 5. Comic Text Detector 모델 자동 다운로드
 
-이 저장소에는 모델 가중치가 포함되지 않습니다. [manga-image-translator beta-0.3 릴리스](https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3) 및 [Comic Text Detector 원본](https://github.com/dmMaze/comic-text-detector)을 참고해 `comictextdetector.pt.onnx`를 확보하세요.
-
-배치 경로:
-
-```text
-local-server/models/comictextdetector.pt.onnx
-```
-
-`models` 폴더가 없으면 만듭니다. 그다음 저장소 루트에서 실행합니다.
+모델은 Git에 포함되지 않으며 최초 설치 시 공식 GitHub 릴리스에서 다운로드합니다. 저장소 루트에서 실행하세요.
 
 ```powershell
-.\local-server\setup_detector.bat
+.\DOWNLOAD_DETECTOR.bat
 ```
 
-정상 완료 시 `DETECTOR READY`와 `Detector installation successful.` 메시지가 출력됩니다. Git LFS 포인터 파일을 모델로 잘못 저장하지 않았는지 확인하세요.
+스크립트는 `local-server/models/comictextdetector.pt.onnx`에 다운로드하고, SHA-256을 검증한 뒤 `local-server/setup_detector.bat`으로 초기화 및 테스트합니다. 이미 검증된 파일은 다시 받지 않습니다. 다운로드 실패 시 인터넷 연결과 GitHub 접근 상태를 확인하고 재실행하세요.
+
+원본: https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3
 
 ### 6. LaMa 이미지 복원 모델 설치
 
