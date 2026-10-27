@@ -5,11 +5,11 @@ import './ChatCenter.css'
 
 type ChatAttachment={id:string;name:string;kind:'image'|'document'|'video';size:number}
 type ChatMessage={role:'user'|'assistant';content:string;attachments?:ChatAttachment[];generation?:{
-  finish_reason:string;completion_tokens:number;segments:number;truncated:boolean
+  finish_reason:string;completion_tokens:number;segments:number;truncated:boolean;thinking_enabled?:boolean
 }}
 type ChatRecord={
   id:string;title:string;created:number;updated:number;system_prompt:string;
-  context_tokens:number;reply_tokens:number;temperature:number;
+  context_tokens:number;reply_tokens:number;temperature:number;thinking_enabled?:boolean; // KWT_CHAT_THINKING_V2_4
   summary:string;summary_through:number;messages:ChatMessage[]
 }
 type ChatItem={id:string;title:string;updated:number;message_count:number}
@@ -114,6 +114,15 @@ export default function ChatCenter({gemmaOnline}:{gemmaOnline:boolean}){
     }catch(e){setInput(text);setError(e instanceof Error?e.message:String(e))}
     finally{setBusy(false)}
   }
+  const toggleThinking=async()=>{
+    if(!chat||busy)return
+    setBusy(true);setError('')
+    try{
+      const next=await api<ChatRecord>('/api/chat/settings',{id:chat.id,thinking_enabled:chat.thinking_enabled!==true})
+      setChat(next);setDraft(next)
+    }catch(e){setError(e instanceof Error?e.message:String(e))}
+    finally{setBusy(false)}
+  }
   const saveSettings=async()=>{
     if(!chat||!draft||busy)return
     setBusy(true);setError('')
@@ -142,6 +151,10 @@ export default function ChatCenter({gemmaOnline}:{gemmaOnline:boolean}){
       <div className="kwt-chat-header">
         <div><b>{chat?.title||'로컬 채팅'}</b><small>{gemmaOnline?'Gemma 서버 연결됨':'Gemma 서버 오프라인 · AI 서버 관리에서 실행'}</small></div>
         <div className="kwt-chat-actions">
+          <button type="button" className={'kwt-chat-thinking-toggle'+(chat?.thinking_enabled?' active':'')}
+            disabled={!chat||busy} aria-pressed={chat?.thinking_enabled===true}
+            title="이 대화의 다음 Gemma 응답에만 추론 모드를 적용합니다. 이전 메시지는 바뀌지 않습니다."
+            onClick={()=>void toggleThinking()}><Brain size={15}/> 추론 {chat?.thinking_enabled?'ON':'OFF'}</button>
           <button type="button" disabled={!chat||busy} onClick={()=>{setDraft(chat);setSettingsOpen(v=>!v)}} title="대화 설정"><Settings2 size={17}/></button>
           <button type="button" disabled={!chat||busy} onClick={()=>void remove()} title="대화 삭제"><Trash2 size={17}/></button>
         </div>
@@ -171,6 +184,7 @@ export default function ChatCenter({gemmaOnline}:{gemmaOnline:boolean}){
               {m.generation.truncated?'⚠ 답변이 아직 완성되지 않았습니다. ':''}
               생성 {m.generation.completion_tokens}토큰 · 종료 {m.generation.finish_reason}
               {m.generation.segments>1?` · 자동 이어쓰기 ${m.generation.segments}회`:''}
+              {` · 추론 ${m.generation.thinking_enabled?'ON':'OFF'}`}
             </div>}
           </div>
         </div>)}
