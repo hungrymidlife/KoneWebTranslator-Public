@@ -271,30 +271,46 @@ class Project:
         return kwt_font_for(size, font_id)
 
     def _manual_draw(self, painter, edit):
+        # KWT_EDIT_TEXT_OVERFLOW_V1_9_3: bbox is editable layout guidance, NOT a
+        # hard validation bound. Respect requested font size and never fail a
+        # save because glyphs/lines exceed the original OCR-derived rectangle.
         if not edit['visible'] or not edit['text']:
             return
         from typesetting_layout import _lines
         x, y, w, h = edit['bbox']
         font = self._font(edit['font_size'], edit.get('font_id','system'))
         stroke = edit['stroke_width']
-        pad = min(4, max(1, w//20))
-        lines = _lines(painter, edit['text'], font, max(1, w-2*pad), stroke)
+        pad = min(4, max(1, w // 20))
+        wrap_width = max(1, w - 2 * pad)
+        lines = _lines(painter, edit['text'], font, wrap_width, stroke)
+        if lines is None:
+            # If even one glyph is wider than the box, allow that glyph to
+            # spill beyond the box rather than rejecting a user font choice.
+            # Keep word-wrap for the rest of the text where possible.
+            longest = max((painter.textlength(ch, font=font) + 2 * stroke
+                           for ch in str(edit['text'])), default=1)
+            lines = _lines(painter, edit['text'], font,
+                           max(wrap_width, int(longest + 1)), stroke)
         if not lines:
-            raise ValueError('편집 글자가 박스 너비보다 큽니다. 너비를 늘리거나 폰트를 줄이세요.')
-        step = max(edit['font_size'] + 2*stroke+2, round(edit['font_size']*1.24) + 2*stroke)
-        if step * len(lines) > h:
-            raise ValueError('편집 글자가 박스 높이를 초과합니다. 높이를 늘리거나 폰트를 줄이세요.')
+            return
+        step = max(edit['font_size'] + 2 * stroke + 2,
+                   round(edit['font_size'] * 1.24) + 2 * stroke)
+        # The user may deliberately position or size text beyond its rectangle;
+        # only the actual canvas/image boundary clips the drawn output.
         for i, line in enumerate(lines):
-            if not line: continue
-            bbox = painter.textbbox((0,0), line, font=font, stroke_width=stroke)
-            tw = painter.textlength(line, font=font) + 2*stroke
+            if not line:
+                continue
+            bbox = painter.textbbox((0, 0), line, font=font, stroke_width=stroke)
+            tw = painter.textlength(line, font=font) + 2 * stroke
             xx = x + pad
-            if edit['align'] == 'center': xx = x + (w-tw)/2
-            if edit['align'] == 'right': xx = x + w - pad - tw
-            yy = y + pad + i*step
-            painter.text((round(xx-bbox[0]),round(yy-bbox[1])), line, font=font,
-                         fill=edit['text_color'], stroke_width=stroke,
-                         stroke_fill=edit['stroke_color'])
+            if edit['align'] == 'center':
+                xx = x + (w - tw) / 2
+            if edit['align'] == 'right':
+                xx = x + w - pad - tw
+            yy = y + pad + i * step
+            painter.text((round(xx - bbox[0]), round(yy - bbox[1])), line,
+                         font=font, fill=edit['text_color'],
+                         stroke_width=stroke, stroke_fill=edit['stroke_color'])
 
     def render_image(self, name, edits_override=None):
         from typesetting_layout import layout_and_draw
@@ -615,6 +631,22 @@ class Handler(BaseHTTPRequestHandler):
             if path=='/api/open':
                 project=get_project(body['source'], body.get('output_dir'))
                 return self._send(200,project.status())
+            # KWT_REVIEW_CLEANUP_V1_9_2: confirmed cleanup of completed artifacts only.
+            if path in ('/api/review/cleanup-preview','/api/review/cleanup'):
+                from review_cleanup import cleanup
+                selected=body.get('paths',[])
+                if not isinstance(selected,list):raise ValueError('ZIP 목록 형식이 올바르지 않습니다.')
+                with queue_lock:
+                    if active_batch:raise RuntimeError('자동 번역 작업이 진행 중이거나 작업 잠금이 남아 있습니다. 정리할 수 없습니다.')
+                    with projects_lock:
+                        busy=[str(p.source).casefold() for p in projects.values() if p.state in ('running','finalizing')]
+                    result=cleanup(selected,body.get('output_dir'),body.get('keep_original',True),
+                                   dry_run=path.endswith('cleanup-preview'),busy_paths=busy)
+                    if not path.endswith('cleanup-preview') and result['ok']:
+                        with projects_lock:
+                            for src in selected:
+                                projects.pop(_key(src),None)
+                    return self._send(200,result)
             if path=='/api/process':
                 paths=body.get('paths',[])
                 if not isinstance(paths,list) or not paths or len(paths)>100:

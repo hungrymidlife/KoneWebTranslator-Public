@@ -106,6 +106,10 @@ export default function App(){
   const [recursive,setRecursive]=useState(()=>boolPref('recursive',false))
   const [zips,setZips]=useState<ZipItem[]>([])
   const [selectedZips,setSelectedZips]=useState<string[]>([])
+  // KWT_REVIEW_CLEANUP_V1_9_2
+  const [reviewKeepOriginal,setReviewKeepOriginal]=useState(true)
+  const [reviewPreview,setReviewPreview]=useState<{items:{source:string;result:string;remove:string[]}[];errors:{source:string;error:string}[]}|null>(null)
+  const [reviewBusy,setReviewBusy]=useState(false)
   const [projects,setProjects]=useState<Project[]>([])
   const [active,setActive]=useState<string|null>(null)
   const [pages,setPages]=useState<PageList>([])
@@ -294,6 +298,34 @@ export default function App(){
   },[section])
 
   const scan=async()=>{try{const found=await api<ZipItem[]>('/api/scan',{root,recursive});setZips(found);setSelectedZips([]);setMessage(null)}catch(e){pushError(e)}}
+  // KWT_REVIEW_CLEANUP_V1_9_2: two-step confirmed, server-verified finalization.
+  const previewReviewCleanup=async()=>{
+    if(!selectedZips.length){setMessage('검수를 완료할 ZIP을 체크하세요.');return}
+    if(Object.keys(dirtyRef.current).length||saveBusy){setMessage('저장되지 않은 식질 변경을 먼저 저장하세요.');return}
+    setReviewBusy(true)
+    try{
+      const res=await api<{ok:boolean;items:{source:string;result:string;remove:string[]}[];errors:{source:string;error:string}[]}>('/api/review/cleanup-preview',{
+        paths:selectedZips,output_dir:output.trim()||undefined,keep_original:reviewKeepOriginal
+      })
+      if(!res.ok){setMessage('정리 불가: '+res.errors.map(e=>e.source.split(/[\\/]/).pop()+': '+e.error).join(' | '));return}
+      setReviewPreview(res)
+    }catch(e){pushError(e)}finally{setReviewBusy(false)}
+  }
+  const executeReviewCleanup=async()=>{
+    if(!reviewPreview||reviewBusy)return
+    setReviewBusy(true)
+    try{
+      const res=await api<{ok:boolean;deleted:number;errors:{source:string;error:string}[]}>('/api/review/cleanup',{
+        paths:reviewPreview.items.map(v=>v.source),output_dir:output.trim()||undefined,keep_original:reviewKeepOriginal
+      })
+      setReviewPreview(null)
+      if(!res.ok){setMessage('일부 정리 실패: '+res.errors.map(e=>e.error).join(' | '));return}
+      setMessage(`검수 완료: ${reviewPreview.items.length}개 ZIP · 부가 파일/폴더 ${res.deleted}개 정리됨. 번역본 ZIP 보존.`)
+      setSelectedZips([]);setActive(null);setPages([]);setPage(null);setLayers([]);setDirty({})
+      const found=await api<ZipItem[]>('/api/scan',{root,recursive});setZips(found)
+      await refreshProjects()
+    }catch(e){pushError(e)}finally{setReviewBusy(false)}
+  }
   const openZip=async(path:string)=>{
     try{const p=await api<Project>('/api/open',{source:path,output_dir:output.trim()||undefined});setProjects(prev=>[...prev.filter(x=>x.id!==p.id),p]);setFollow(true);setActive(p.id);setMessage(null)}catch(e){pushError(e)}
   }
@@ -420,14 +452,18 @@ export default function App(){
         <div className="field"><label>프로젝트 루트 폴더</label><div className="inline"><input value={root} onChange={e=>setRoot(e.target.value)} placeholder="C:\\...\\manga"/><button className="icon-btn" onClick={()=>void chooseFolder()} title="폴더 선택"><FolderOpen size={18}/></button></div></div>
         <div className="scan-options"><label><input type="checkbox" checked={recursive} onChange={e=>setRecursive(e.target.checked)}/>하위 폴더 포함</label><button className="subtle-btn" onClick={()=>void scan()}><Search size={15}/> ZIP 검색</button></div>
         <div className="field"><label>결과 저장 폴더 <span className="muted">(선택)</span></label><input value={output} onChange={e=>setOutput(e.target.value)} placeholder="기본: 원본 ZIP 폴더"/></div>
-        <div className="file-list-head"><b>ZIP 파일 <span>{zips.length}</span></b><button className="minor" onClick={()=>setSelectedZips(zips.map(z=>z.path))}>전체 선택</button></div>
+        <div className="file-list-head"><b>ZIP 파일 <span>{zips.length}</span></b><button className="minor" onClick={()=>setSelectedZips(prev=>zips.length>0&&zips.every(z=>prev.includes(z.path))?[]:zips.map(z=>z.path))}>{zips.length>0&&zips.every(z=>selectedZips.includes(z.path))?'전체 해제':'전체 선택'}</button></div>
         <div className="filter-input"><input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="파일명 필터..." /></div>
         <div className="zip-list scroll">
           {zips.length?zips.filter(x=>x.name.toLowerCase().includes(filter.toLowerCase())).map(zip=><div key={zip.path} className={'zip-item '+(activeProject?.source===zip.path?'selected':'')}>
             <input type="checkbox" checked={selectedZips.includes(zip.path)} onChange={e=>setSelectedZips(prev=>e.target.checked?[...prev,zip.path]:prev.filter(x=>x!==zip.path))}/>
             <button onClick={()=>void openZip(zip.path)} title={zip.path}><ImageIcon size={14}/><span>{zip.name}</span></button>{zip.processed&&<Check className="done" size={15}/>}</div>):<p className="hint">폴더를 선택한 다음 ZIP 검색을 눌러줘. 이 화면에 파일을 드롭해도 돼.</p>}
         </div>
-        <div className="sidebar-footer"><button className="primary full" disabled={!connected} onClick={()=>void start()}><Play size={17} fill="currentColor"/> {selectedZips.length?`${selectedZips.length}개 ZIP 자동 처리`:'현재 ZIP 자동 처리'}</button></div>
+        <div className="sidebar-footer">
+          <label className="mini-check" style={{marginBottom:9}}><input type="checkbox" checked={reviewKeepOriginal} onChange={e=>setReviewKeepOriginal(e.target.checked)}/> 원본 ZIP 보존 (권장)</label>
+          <button className="secondary full" type="button" disabled={!connected||!selectedZips.length||reviewBusy} onClick={()=>void previewReviewCleanup()} style={{marginBottom:9}}>{reviewBusy?'확인 중…':`검수 완료 · 선택 ${selectedZips.length}개 정리`}</button>
+          <button className="primary full" disabled={!connected} onClick={()=>void start()}><Play size={17} fill="currentColor"/> {selectedZips.length?`${selectedZips.length}개 ZIP 자동 처리`:'현재 ZIP 자동 처리'}</button>
+        </div>
       </aside>}
       <main className="main">
         <div className="document-toolbar">
@@ -491,6 +527,15 @@ export default function App(){
         <p>완료된 프로젝트 기록과 내부 작업 상태를 초기화하고 Bridge만 재시작합니다. OCR·Gemma 서버 및 디스크 파일은 유지됩니다.</p>
         <p>현재 작업 중인 번역이 있다면 재시작할 수 없습니다. 저장되지 않은 식질 변경도 먼저 저장해야 합니다.</p>
         <div className="kwt-bridge-restart-actions"><button type="button" onClick={()=>setBridgeRestartConfirm(false)}>취소</button><button type="button" className="primary" disabled={bridgeRestartBusy} onClick={()=>void restartBridge()}>Bridge 재시작</button></div>
+      </div>
+    </div>}
+    {reviewPreview&&<div className="kwt-bridge-restart-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!reviewBusy)setReviewPreview(null)}}>
+      <div className="kwt-bridge-restart-dialog" role="dialog" aria-modal="true" aria-label="검수 완료 및 파일 정리">
+        <h3>검수 완료 · 파일 정리 확인</h3>
+        <p>완료된 번역 ZIP {reviewPreview.items.length}개는 반드시 보존합니다. {reviewKeepOriginal?'원본 ZIP도 보존합니다.':'원본 ZIP도 삭제합니다. 이후 Studio에서 해당 작업을 다시 열 수 없습니다.'}</p>
+        <p>메타데이터, 수동 편집 기록, LaMa 배경 캐시와 스튜디오 백업이 삭제됩니다. <strong>정리 후에는 이전 식질 박스를 재편집하거나 되돌릴 수 없습니다.</strong></p>
+        <div style={{maxHeight:180,overflowY:'auto',fontSize:12,marginBottom:12}}>{reviewPreview.items.map(item=><div key={item.source} style={{marginBottom:7}}>{item.source.split(/[\\/]/).pop()} · 삭제 대상 {item.remove.length}개</div>)}</div>
+        <div className="kwt-bridge-restart-actions"><button type="button" disabled={reviewBusy} onClick={()=>setReviewPreview(null)}>취소</button><button className="primary" type="button" disabled={reviewBusy} onClick={()=>void executeReviewCleanup()}>{reviewBusy?'정리 중…':'정리 확정'}</button></div>
       </div>
     </div>}
     <AnimatePresence>{message&&<motion.div className="toast" initial={{opacity:0,y:15}} animate={{opacity:1,y:0}} exit={{opacity:0,y:15}}><AlertCircle size={19}/><span>{message}</span><button onClick={()=>setMessage(null)}>닫기</button></motion.div>}</AnimatePresence>
