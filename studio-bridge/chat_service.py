@@ -16,6 +16,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from chat_attachments import prepare as kwt_prepare_attachments, delete_conversation as kwt_delete_attachments  # KWT_CHAT_ATTACH_V2_3
+
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / 'studio-bridge' / '.studio_runtime' / 'chat'
 API = 'http://127.0.0.1:18080/v1/chat/completions'
@@ -131,8 +133,10 @@ def _list() -> list:
     return sorted(result, key=lambda x: x['updated'], reverse=True)[:100]
 
 
-def _estimate(text: str) -> int:
-    """Conservative approximation for Korean/CJK and English; not a tokenizer."""
+def _estimate(text: str | list) -> int:
+    """Conservative estimate including multimodal frames (not exact tokens)."""
+    if isinstance(text, list):
+        return sum(_estimate(p.get('text', '')) if p.get('type') == 'text' else 1100 for p in text if isinstance(p, dict))
     asian = sum(1 for c in text if ord(c) > 127)
     other = len(text) - asian
     return int(asian * 1.8 + other / 2.7 + 10)
@@ -221,6 +225,8 @@ def _generate_complete(prompt: list, item: dict, chat_cfg=None) -> tuple[str, di
             # follow-up has room to generate, even in 0 (auto) mode.
             system = prompt[0]
             latest = prompt[-1]
+            if isinstance(latest.get('content'), list):
+                latest = {'role':'user', 'content':''.join(str(p.get('text','')) for p in latest['content'] if p.get('type')=='text') + '\n[이미지 프레임은 첫 번째 요청에서만 전달됨]'}
             followup = {'role': 'user', 'content':
                         '방금 답변이 길이 제한으로 중단되었습니다. 이미 쓴 내용은 반복하지 말고, '
                         '끊긴 문장부터 자연스럽게 이어서 답변을 마무리해 주세요.'}
@@ -298,7 +304,11 @@ def _messages_for(item: dict, pending: dict, chat_cfg=None) -> list:
     def prompt_messages() -> list:
         memory = item.get('summary', '')
         system = item['system_prompt'] + ('\n\n[이전 대화의 압축 기억]\n' + memory if memory else '')
-        return [{'role': 'system', 'content': system}] + transcript[cursor:]
+        return [{'role': 'system', 'content': system}] + [
+            {'role': m['role'], 'content': m['content'] + (
+                '\n[대화 첨부: ' + ', '.join(a['name'] for a in m.get('attachments', [])) + ']'
+                if m.get('attachments') else '')}
+            for m in transcript[cursor:]]
 
     for _ in range(len(transcript) + 1):
         result = prompt_messages()
@@ -342,6 +352,7 @@ def post(path: str, body: dict) -> object:
         item = _read(cid)
         if path == '/api/chat/delete':
             _file(cid).unlink()
+            kwt_delete_attachments(cid)
             return {'deleted': True}
         if path == '/api/chat/settings':
             prompt = str(body.get('system_prompt', item['system_prompt'])).strip()
@@ -362,20 +373,32 @@ def post(path: str, body: dict) -> object:
             return _public(item)
         if path == '/api/chat/send':
             text = str(body.get('text', '')).strip()
-            if not text or len(text) > 6000:
-                raise ValueError('메시지는 1~6000자까지 입력할 수 있습니다.')
+            if len(text) > 6000 or (not text and not body.get('attachments')):
+                raise ValueError('메시지는 1~6000자이며 파일만 첨부할 수도 있습니다.')
             if len(item.get('messages', [])) >= 10000:
                 raise ValueError('대화 기록이 10000개를 넘었습니다. 새 대화를 시작해 주세요.')
             _busy_change(1)
             try:
                 chat_cfg = _kwt_chat_runtime()  # one snapshot per send
-                pending = {'role': 'user', 'content': text}
+                selected = body.get('attachments', [])
+                attachments, notes, visuals = kwt_prepare_attachments(cid, selected)
+                question = text or '첨부 파일을 분석하고 핵심 내용을 한국어로 설명해 줘.'
+                pending = {'role': 'user', 'content': question, 'attachments': attachments} if attachments else {'role':'user','content':question}
                 prompt = _messages_for(item, pending, chat_cfg)
-                answer, generation = _generate_complete(prompt, item, chat_cfg)
+                if attachments:
+                    # Do not persist base64 frames or extracted full documents in the transcript.
+                    detail = question + '\n\n[첨부 내용]\n' + notes
+                    prompt[-1] = {'role':'user','content': ([{'type':'text','text':detail}] + visuals) if visuals else detail}
+                try:
+                    answer, generation = _generate_complete(prompt, item, chat_cfg)
+                except RuntimeError as exc:
+                    if visuals:
+                        raise RuntimeError('이미지/영상 분석에는 Gemma의 멀티모달 지원과 모델에 맞는 mmproj가 필요합니다. AI 서버 실행 설정을 확인하세요. 원본 오류: '+str(exc)[:480]) from exc
+                    raise
                 item['messages'].extend([pending, {'role': 'assistant', 'content': answer,
                                                   'generation': generation}])
                 if item['title'] == '새 대화':
-                    item['title'] = text[:32].replace('\n', ' ')
+                    item['title'] = question[:32].replace('\n', ' ')
                 item['updated'] = time.time()
                 _save(item)
                 return _public(item)

@@ -53,6 +53,19 @@ $argsList = @(
     '--min-p', ([System.Convert]::ToString([double]$gemmaOptions['min_p'],[System.Globalization.CultureInfo]::InvariantCulture)),
     '--repeat-penalty', ([System.Convert]::ToString([double]$gemmaOptions['repeat_penalty'],[System.Globalization.CultureInfo]::InvariantCulture))
 )
+# KWT_CHAT_ATTACH_V2_3: opt-in multimodal projector for image/video chat.
+# Name a model-compatible projector exactly mmproj-gemma-4-12b-it.gguf.
+$mmproj = Join-Path $root 'models\mmproj-gemma-4-12b-it.gguf'
+if (Test-Path -LiteralPath $mmproj -PathType Leaf) {
+    $mmHelp = (& $server --help 2>&1 | Out-String)
+    if ($mmHelp -notmatch 'mmproj') {
+        throw 'The installed llama-server does not support --mmproj. Update llama.cpp or remove the optional projector.'
+    }
+    $argsList += @('--mmproj', $mmproj)
+    Write-Host 'Multimodal projector enabled for local chat (images/video frames).' -ForegroundColor Green
+} else {
+    Write-Host 'Multimodal projector absent: text-only chat. Image/video analysis will require a matching mmproj.' -ForegroundColor Yellow
+}
 if ($MTP) {
     if (-not (Test-Path -LiteralPath $draft -PathType Leaf)) {
         throw "MTP draft model missing: $draft. Select Normal mode or install the MTP draft model."

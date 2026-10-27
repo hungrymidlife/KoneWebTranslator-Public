@@ -1,9 +1,10 @@
 import {useCallback,useEffect,useRef,useState} from 'react'
-import {Bot,Brain,LoaderCircle,MessageSquare,Plus,Save,Send,Settings2,Trash2,User} from 'lucide-react'
-import {api} from './api'
+import {Bot,Brain,Download,FileText,Image as ImageIcon,LoaderCircle,MessageSquare,Paperclip,Plus,Save,Send,Settings2,Trash2,User,Video,X} from 'lucide-react' // KWT_CHAT_ATTACH_V2_3
+import {api,BASE} from './api'
 import './ChatCenter.css'
 
-type ChatMessage={role:'user'|'assistant';content:string;generation?:{
+type ChatAttachment={id:string;name:string;kind:'image'|'document'|'video';size:number}
+type ChatMessage={role:'user'|'assistant';content:string;attachments?:ChatAttachment[];generation?:{
   finish_reason:string;completion_tokens:number;segments:number;truncated:boolean
 }}
 type ChatRecord={
@@ -18,6 +19,9 @@ export default function ChatCenter({gemmaOnline}:{gemmaOnline:boolean}){
   const [selected,setSelected]=useState('')
   const [chat,setChat]=useState<ChatRecord|null>(null)
   const [input,setInput]=useState('')
+  const [attachments,setAttachments]=useState<ChatAttachment[]>([])
+  const fileInput=useRef<HTMLInputElement>(null)
+  const [saveFormat,setSaveFormat]=useState('md')
   const [busy,setBusy]=useState(false)
   const [error,setError]=useState('')
   const [settingsOpen,setSettingsOpen]=useState(false)
@@ -50,12 +54,44 @@ export default function ChatCenter({gemmaOnline}:{gemmaOnline:boolean}){
   },[selected,load])
   useEffect(()=>{end.current?.scrollIntoView({block:'end'})},[chat?.messages.length,selected])
 
+  const uploadFiles=async(files:FileList|null)=>{
+    if(!files||!chat||busy)return
+    setBusy(true);setError('')
+    try{
+      let queued=attachments.length
+      for(const file of Array.from(files)){
+        if(queued>=4)throw Error('한 메시지에 첨부할 파일은 최대 4개입니다.')
+        if(file.size>64*1024*1024)throw Error('파일 크기는 최대 64MB입니다.')
+        const res=await fetch(BASE+'/api/chat/attachment',{method:'POST',headers:{
+          'X-KWT-Studio':'1','X-KWT-Chat-Id':chat.id,
+          'X-KWT-Chat-Filename':encodeURIComponent(file.name),
+          'Content-Type':'application/octet-stream',
+        },body:file})
+        if(!res.ok){let reason='파일 첨부 실패';try{const e=await res.json();reason=e.error||reason}catch{}throw Error(reason)}
+        const info=await res.json() as ChatAttachment
+        setAttachments(prev=>prev.length<4?[...prev,info]:prev)
+        queued++
+      }
+    }catch(e){setError(e instanceof Error?e.message:String(e))}
+    finally{setBusy(false);if(fileInput.current)fileInput.current.value=''}
+  }
+  const downloadAnswer=(answer:string)=>{
+    const extension=['md','txt','json','csv','html','py','js','ts','css','sql'].includes(saveFormat)?saveFormat:'md'
+    let data=answer
+    const fenced=answer.match(/```[a-zA-Z0-9_+.#-]*\s*\n([\s\S]*?)```/)
+    if(extension!=='md'&&extension!=='txt'&&fenced)data=fenced[1].replace(/\s+$/,'')+'\n'
+    const blob=new Blob([data],{type:'text/plain;charset=utf-8'})
+    const link=document.createElement('a');const url=URL.createObjectURL(blob)
+    link.href=url;link.download=`KWT_chat_${Date.now()}.${extension}`
+    document.body.appendChild(link);link.click();link.remove()
+    window.setTimeout(()=>URL.revokeObjectURL(url),1000)
+  }
   const create=async()=>{
     if(busy)return
     setBusy(true);setError('')
     try{
       const next=await api<ChatRecord>('/api/chat/create',{})
-      await refreshList();setSelected(next.id);setChat(next);setInput('');setSettingsOpen(false)
+      await refreshList();setSelected(next.id);setChat(next);setInput('');setAttachments([]);setSettingsOpen(false)
     }catch(e){setError(String(e))}finally{setBusy(false)}
   }
   const remove=async()=>{
@@ -64,16 +100,17 @@ export default function ChatCenter({gemmaOnline}:{gemmaOnline:boolean}){
     try{
       await api('/api/chat/delete',{id:chat.id})
       const list=await refreshList();setSelected(list.find(c=>c.id!==chat.id)?.id||'')
-      if(list.length===0)setChat(null)
+      setAttachments([]);if(list.length===0)setChat(null)
     }catch(e){setError(String(e))}finally{setBusy(false)}
   }
   const send=async()=>{
-    if(busy||!chat||!input.trim())return
+    if(busy||!chat||(!input.trim()&&!attachments.length))return
     const text=input.trim()
+    const files=attachments
     setBusy(true);setError('');setInput('')
     try{
-      const next=await api<ChatRecord>('/api/chat/send',{id:chat.id,text})
-      setChat(next);await refreshList()
+      const next=await api<ChatRecord>('/api/chat/send',{id:chat.id,text,attachments:files})
+      setChat(next);setAttachments([]);await refreshList()
     }catch(e){setInput(text);setError(e instanceof Error?e.message:String(e))}
     finally{setBusy(false)}
   }
@@ -128,6 +165,8 @@ export default function ChatCenter({gemmaOnline}:{gemmaOnline:boolean}){
           <div className="kwt-chat-avatar">{m.role==='assistant'?<Bot size={17}/>:<User size={17}/>}</div>
           <div className="kwt-chat-message-body">
             <div className="kwt-chat-bubble">{m.content}</div>
+            {m.attachments?.length? <div className="kwt-chat-file-list">{m.attachments.map(a=><span className="kwt-chat-file" key={a.id} title={a.name}>{a.kind==='image'?<ImageIcon size={13}/>:a.kind==='video'?<Video size={13}/>:<FileText size={13}/>} {a.name}</span>)}</div>:null}
+            {m.role==='assistant'&&<div className="kwt-chat-download"><button type="button" onClick={()=>downloadAnswer(m.content)} title="답변 내용을 파일로 저장"><Download size={13}/> 답변 저장</button></div>}
             {m.role==='assistant'&&m.generation&&<div className={'kwt-chat-generation'+(m.generation.truncated?' warn':'')}>
               {m.generation.truncated?'⚠ 답변이 아직 완성되지 않았습니다. ':''}
               생성 {m.generation.completion_tokens}토큰 · 종료 {m.generation.finish_reason}
@@ -141,11 +180,14 @@ export default function ChatCenter({gemmaOnline}:{gemmaOnline:boolean}){
       <div className="kwt-chat-compose">
         {error&&<div className="kwt-chat-error" role="alert">{error}</div>}
         {!gemmaOnline&&<div className="kwt-chat-hint">AI 서버 관리에서 Gemma를 실행해야 답변을 받을 수 있습니다.</div>}
+        <input ref={fileInput} type="file" multiple className="kwt-chat-file-input" accept="image/*,video/mp4,video/webm,video/x-matroska,video/quicktime,.txt,.md,.csv,.json,.jsonl,.log,.srt,.vtt,.html,.xml,.yaml,.yml,.ini,.cfg,.py,.js,.ts,.tsx,.jsx,.css,.sh,.ps1,.bat,.sql,.toml,.pdf" onChange={e=>void uploadFiles(e.target.files)}/>
+        {attachments.length>0&&<div className="kwt-chat-file-list">{attachments.map(a=><span className="kwt-chat-file" key={a.id}>{a.kind==='image'?<ImageIcon size={13}/>:a.kind==='video'?<Video size={13}/>:<FileText size={13}/>} {a.name}<button type="button" onClick={()=>setAttachments(v=>v.filter(x=>x.id!==a.id))} title="첨부 취소"><X size={13}/></button></span>)}</div>}
+        <div className="kwt-chat-file-toolbar"><button type="button" disabled={!chat||busy||attachments.length>=4} onClick={()=>fileInput.current?.click()}><Paperclip size={15}/> 파일 첨부</button><span>사진·영상·PDF·텍스트/코드 · 최대 4개</span><label>답변 저장 형식 <select value={saveFormat} onChange={e=>setSaveFormat(e.target.value)}>{['md','txt','json','csv','html','py','js','ts','css','sql'].map(ext=><option key={ext} value={ext}>{ext}</option>)}</select></label></div>
         <div className="kwt-chat-compose-row">
           <textarea value={input} disabled={!chat||busy} rows={3} maxLength={6000} placeholder="메시지 입력 (Enter 전송 · Shift+Enter 줄바꿈)" onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send()}}}/>
-          <button type="button" className="kwt-chat-primary" disabled={!chat||busy||!input.trim()||!gemmaOnline} onClick={()=>void send()}><Send size={18}/></button>
+          <button type="button" className="kwt-chat-primary" disabled={!chat||busy||(!input.trim()&&!attachments.length)||!gemmaOnline} onClick={()=>void send()}><Send size={18}/></button>
         </div>
-        <small>최근 대화 + 자동 압축 기억 · 전체 원본 기록 보존 · 번역 작업과 GPU 자원 공유</small>
+        <small>최근 대화 + 자동 압축 기억 · 첨부 원본은 PC에만 보관 · 영상은 대표 프레임만 분석 · 이미지/영상은 mmproj 필요</small>
       </div>
     </section>
   </div>
