@@ -168,15 +168,25 @@ cd ..
 
 원본: https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3
 
-### 6. LaMa 이미지 복원 모델 설치
+### 6. LaMa 이미지 복원 모델 자동 다운로드
 
-ZIP 자동 식질의 원문 제거/이미지 복원 기능을 사용하려면 LaMa 모델을 별도로 준비하세요.
+ZIP 식질의 원문 제거와 배경 복원에 사용하는 LaMa 모델은 Git 저장소에 포함되지 않습니다. **저장소 루트에서** 다음 명령으로 자동 다운로드하세요.
 
-```text
-local-trans/models/big-lama.pt
+```powershell
+.\DOWNLOAD_LAMA.bat
 ```
 
-모델 출처와 라이선스는 [LaMa 원본](https://github.com/advimman/lama)에서 확인하세요. OCR/번역만 테스트할 경우와 전체 식질 파이프라인 테스트를 구분해야 합니다.
+스크립트는 `local-trans/models/big-lama.pt`에 약 206MB의 모델을 내려받고, 공개된 SHA-256 체크섬으로 무결성을 검증합니다. 이미 검증된 파일이 있으면 다운로드를 생략합니다. 기존 파일이 체크섬과 다르면 **덮어쓰지 않고 중단**합니다. 네트워크 오류 시 다시 실행할 수 있습니다.
+
+모델 출처: https://huggingface.co/signature-ai/big-lama (Apache-2.0 표기). 모델 파일은 PyTorch 직렬화 포맷이므로 신뢰하는 출처의 모델만 사용하세요.
+
+설치 확인:
+
+```powershell
+Test-Path .\local-trans\models\big-lama.pt
+```
+
+이 검사는 파일 존재만 확인합니다. 실제 식질 동작은 Studio ZIP 처리에서 별도로 확인해야 합니다.
 
 ### 7. Gemma 번역 서버 설치
 
