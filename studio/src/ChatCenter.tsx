@@ -23,6 +23,7 @@ export default function ChatCenter({gemmaOnline}:{gemmaOnline:boolean}){
   const fileInput=useRef<HTMLInputElement>(null)
   const [saveFormat,setSaveFormat]=useState('md')
   const [busy,setBusy]=useState(false)
+  const [deleteTarget,setDeleteTarget]=useState<{id:string;title:string}|null>(null) // KWT_CHAT_DELETE_CONFIRM_V2_4_1
   const [error,setError]=useState('')
   const [settingsOpen,setSettingsOpen]=useState(false)
   const [draft,setDraft]=useState<ChatRecord|null>(null)
@@ -94,14 +95,26 @@ export default function ChatCenter({gemmaOnline}:{gemmaOnline:boolean}){
       await refreshList();setSelected(next.id);setChat(next);setInput('');setAttachments([]);setSettingsOpen(false)
     }catch(e){setError(String(e))}finally{setBusy(false)}
   }
-  const remove=async()=>{
-    if(!chat||busy||!window.confirm(`"${chat.title}" 대화를 영구 삭제할까요?`))return
+  const remove=()=>{
+    // Clicking the trash icon ONLY opens our confirmation dialog.
+    if(!chat||busy||deleteTarget)return
+    setError('')
+    setDeleteTarget({id:chat.id,title:chat.title})
+  }
+  const confirmDelete=async()=>{
+    // There is exactly one deletion path: the modal's explicit confirm button.
+    if(!deleteTarget||busy)return
+    const target=deleteTarget
     setBusy(true);setError('')
     try{
-      await api('/api/chat/delete',{id:chat.id})
-      const list=await refreshList();setSelected(list.find(c=>c.id!==chat.id)?.id||'')
-      setAttachments([]);if(list.length===0)setChat(null)
-    }catch(e){setError(String(e))}finally{setBusy(false)}
+      await api('/api/chat/delete',{id:target.id})
+      const list=await refreshList()
+      setSelected(current=>current===target.id?(list.find(c=>c.id!==target.id)?.id||''):current)
+      setAttachments([])
+      if(list.length===0)setChat(null)
+      setDeleteTarget(null)
+    }catch(e){setError(e instanceof Error?e.message:String(e))}
+    finally{setBusy(false)}
   }
   const send=async()=>{
     if(busy||!chat||(!input.trim()&&!attachments.length))return
@@ -204,5 +217,16 @@ export default function ChatCenter({gemmaOnline}:{gemmaOnline:boolean}){
         <small>최근 대화 + 자동 압축 기억 · 첨부 원본은 PC에만 보관 · 영상은 대표 프레임만 분석 · 이미지/영상은 mmproj 필요</small>
       </div>
     </section>
+    {deleteTarget&&<div className="kwt-chat-delete-backdrop">
+      <div className="kwt-chat-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="kwt-chat-delete-title" aria-describedby="kwt-chat-delete-description" onKeyDown={e=>{if(e.key==='Escape'&&!busy){e.stopPropagation();setDeleteTarget(null)}}}>
+        <h3 id="kwt-chat-delete-title">대화를 삭제할까요?</h3>
+        <p id="kwt-chat-delete-description"><strong>{deleteTarget.title}</strong> 대화 및 첨부 파일이 영구 삭제됩니다. 이 작업은 되돌릴 수 없습니다.</p>
+        {error&&<p className="kwt-chat-delete-error" role="alert">{error}</p>}
+        <div className="kwt-chat-delete-buttons">
+          <button type="button" autoFocus disabled={busy} onClick={()=>setDeleteTarget(null)}>취소</button>
+          <button type="button" className="danger" disabled={busy} onClick={()=>void confirmDelete()}>{busy?'삭제 중…':'삭제 확인'}</button>
+        </div>
+      </div>
+    </div>}
   </div>
 }
