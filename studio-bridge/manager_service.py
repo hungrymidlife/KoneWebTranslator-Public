@@ -318,10 +318,17 @@ class ManagerService:
         if name=='gemma':
             if mode not in ('MTP','Normal'):raise ValueError('실행 모드는 MTP 또는 Normal이어야 합니다.')
             folder=Path(str(self.settings()['gemma_dir'])).expanduser()
-            launcher=folder/'Launch.ps1'
+            launcher=BASE.parent/'ai'/'Launch.ps1'
             if not launcher.is_file():raise FileNotFoundError(f'Launch.ps1을 찾을 수 없습니다: {launcher}')
-            args=['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(launcher)]
-            if mode=='MTP':args.append('-MTP')
+            args = [
+                'powershell.exe',
+                '-NoProfile',
+                '-ExecutionPolicy', 'Bypass',
+                '-File', str(launcher),
+                '-InstallRoot', str(folder),
+            ]
+            if mode == 'MTP':
+                args.append('-MTP')
             self._log('Gemma 실행 모드: '+mode)
             return self._spawn(name,args,folder)
         python=BASE/'.venv'/'Scripts'/'python.exe'

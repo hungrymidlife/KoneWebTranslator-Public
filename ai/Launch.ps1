@@ -1,13 +1,20 @@
-param([switch]$MTP)
+# KoneWebTranslator-Public / Studio Gemma launcher
+# Adapted from the user-provided Launch.ps1: only model/server paths are relocated.
+param(
+    [switch]$MTP,
+    [Parameter(Mandatory=$true)]
+    [string]$InstallRoot
+)
 $ErrorActionPreference = 'Stop'
-$root = $PSScriptRoot
-$pathFile = Join-Path $root 'server-path.txt'
-if (-not (Test-Path $pathFile)) { throw 'Run Install.bat first.' }
-$server = (Get-Content $pathFile -Raw).Trim()
+
+$root = [System.IO.Path]::GetFullPath($InstallRoot)
+$server = Join-Path $root 'llama-bin\llama-server.exe'
 $model = Join-Path $root 'models\Gemma4-12B-QAT-Uncensored-HauhauCS-Balanced-Q4_K_M.gguf'
 $draft = Join-Path $root 'models\mtp-gemma-4-12B-it.gguf'
-if (-not (Test-Path $server)) { throw "Server executable missing: $server" }
-if (-not (Test-Path $model)) { throw "Model missing: $model" }
+
+if (-not (Test-Path -LiteralPath $server -PathType Leaf)) { throw "Server executable missing: $server" }
+if (-not (Test-Path -LiteralPath $model -PathType Leaf)) { throw "Model missing: $model" }
+
 $argsList = @(
     '-m', $model,
     '-ngl', '99',
@@ -23,13 +30,23 @@ $argsList = @(
     '--repeat-penalty', '1.1'
 )
 if ($MTP) {
-  if (-not (Test-Path $draft)) { throw "MTP model missing: $draft" }
-  $helpText = (& $server --help 2>&1 | Out-String)
-  if ($helpText -notmatch 'draft-mtp') { throw 'This llama.cpp build does not advertise draft-mtp. Update build or run Start_Normal.bat.' }
-  $argsList += @('-md',$draft,'--spec-type','draft-mtp')
-  Write-Host 'MTP enabled (speculative decoding)' -ForegroundColor Green
-} else { Write-Host 'Normal decoding (baseline)' -ForegroundColor Yellow }
+    if (-not (Test-Path -LiteralPath $draft -PathType Leaf)) {
+        throw "MTP draft model missing: $draft. Select Normal mode or install the MTP draft model."
+    }
+    $helpText = (& $server --help 2>&1 | Out-String)
+    if ($helpText -notmatch 'draft-mtp') {
+        throw 'This llama.cpp build does not advertise draft-mtp. Select Normal mode or use a compatible build.'
+    }
+    $argsList += @('-md', $draft, '--spec-type', 'draft-mtp')
+    Write-Host 'MTP enabled (speculative decoding)' -ForegroundColor Green
+} else {
+    Write-Host 'Normal decoding (baseline)' -ForegroundColor Yellow
+}
+Write-Host "Install root: $root"
 Write-Host 'API: http://127.0.0.1:18080/v1/chat/completions'
-Write-Host 'Press Ctrl+C to stop. Only local PC can connect.'
+Write-Host 'Only local PC can connect.'
 & $server @argsList
-if ($LASTEXITCODE -ne 0) { Write-Host "Exit code: $LASTEXITCODE" -ForegroundColor Red; exit $LASTEXITCODE }
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Exit code: $LASTEXITCODE" -ForegroundColor Red
+    exit $LASTEXITCODE
+}
