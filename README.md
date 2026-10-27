@@ -176,6 +176,21 @@ cd ..
 
 가상환경은 다른 PC에서 복사하지 않고 **사용자 PC에서 새로 생성**합니다.
 
+#### 필수: LaMa 이미지 복원용 PyTorch 설치 (기본 `.venv`)
+
+**현재 `SETUP.bat`과 `local-server/install.bat`은 기본 `.venv`에 PyTorch를 자동 설치하지 않습니다.** 기본 설치가 완료되었더라도 아래 명령을 별도로 실행해야 ZIP 자동 식질의 LaMa 단계가 동작합니다. 저장소 **루트**의 PowerShell에서 실행하세요.
+
+```powershell
+.\local-server\.venv\Scripts\python.exe -m pip install torch --index-url https://download.pytorch.org/whl/cu128
+.\local-server\.venv\Scripts\python.exe -c "import torch; print('Torch:', torch.__version__); print('CUDA:', torch.cuda.is_available())"
+```
+
+첫 명령은 NVIDIA CUDA 12.8용 PyTorch를 설치합니다. NVIDIA 드라이버 및 GPU가 호환되어야 CUDA 가속을 사용할 수 있습니다. `CUDA: False`여도 `import torch` 자체가 성공했다면 PyTorch 누락 오류는 해결된 것이며 LaMa는 CPU로 실행될 수 있지만 느립니다. CUDA가 아닌 환경은 [PyTorch 공식 설치 안내](https://pytorch.org/get-started/locally/)에서 환경에 맞는 설치 명령을 확인하세요.
+
+**주의: Python 환경은 두 개입니다.** `SETUP_HAYAI.bat`은 OCR용 `local-server/.venv-hayai`에 PyTorch를 설치합니다. 하지만 Studio Bridge와 `local-trans/inpainting_lama.py`의 LaMa 복원은 **기본 `local-server/.venv`**의 Python으로 실행됩니다. Hayai용 PyTorch가 설치되어 있어도 LaMa용 PyTorch 설치를 대신하지 않습니다. 설치 후 **Studio Bridge를 재시작**해야 새 패키지가 반영됩니다.
+
+> 이 절은 현재 배포본의 설치 누락을 보완하기 위한 수동 단계입니다. README만 변경해도 `SETUP.bat` 동작은 바뀌지 않으므로, 향후 설치 스크립트에도 의존성 자동 설치·검증을 추가해야 합니다.
+
 ### 4. Hayai OCR 설치
 
 ```powershell
@@ -274,6 +289,8 @@ Test-Path .\local-server\models\comictextdetector.pt.onnx
 Test-Path .\local-trans\models\big-lama.pt
 Test-Path .\DOWNLOAD_DETECTOR.bat
 Test-Path .\DOWNLOAD_LAMA.bat
+# LaMa가 사용하는 기본 환경(.venv)의 PyTorch를 실제 import 검사
+.\local-server\.venv\Scripts\python.exe -c "import torch; print('LaMa torch:',torch.__version__,'CUDA:',torch.cuda.is_available())"
 ```
 
 모든 필수 구성요소를 설치했다면 각 경로가 `True`여야 합니다. `DOWNLOAD_LAMA.bat`이 `False`이면 공개 저장소에 V1.0.7 LaMa 패치가 아직 반영되지 않은 것입니다. Gemma는 파일 존재 검사만으로 완료 여부를 판단할 수 없으므로 `/v1/models` 응답을 별도로 확인하세요. OCR 서버 실행 후 `http://127.0.0.1:8765/health`, Gemma 서버 실행 후 `http://127.0.0.1:18080/v1/models`를 확인하세요.
@@ -288,6 +305,7 @@ Test-Path .\DOWNLOAD_LAMA.bat
 | `cargo` 없음 | Rust 설치 또는 `RUN_STUDIO_WEB.bat` 사용 |
 | Comic Text Detector 파일 없음 | 저장소 루트에서 `DOWNLOAD_DETECTOR.bat` 실행 |
 | LaMa 모델 파일 없음 | `DOWNLOAD_LAMA.bat` 설치 여부를 확인하고 루트에서 실행 |
+| `ModuleNotFoundError: No module named 'torch'` (ZIP 이미지 복원 실패) | 기본 `local-server/.venv`에 위 **LaMa용 PyTorch 설치** 단계를 실행한 뒤 Bridge 재시작 (`.venv-hayai` 설치만으로 해결되지 않음) |
 | Gemma 연결 실패 | 서버 실행 여부, 18080 포트, `/v1/models` 응답, 모델 ID 확인 |
 | 확장앱 오류 | 확장앱과 웹페이지 새로고침 |
 
