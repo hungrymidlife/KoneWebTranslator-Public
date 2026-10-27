@@ -7,7 +7,8 @@ import threading
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 
-_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='kwt-translation')
+from worker_runtime import worker_count  # KWT_UNIFIED_WORKERS_V1_2
+_pool = ThreadPoolExecutor(max_workers=worker_count('translation_workers', 4), thread_name_prefix='kwt-translation')
 _futures = {}
 _futures_lock = threading.Lock()
 

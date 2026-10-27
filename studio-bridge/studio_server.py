@@ -451,48 +451,57 @@ def get_project(path, output=None):
 def process_batch(paths, output):
     global active_batch
     from zip_pipeline import process_zip
-    try:
-        for source in paths:
-            project = get_project(source, output)
+    from concurrent.futures import ThreadPoolExecutor
+    from runtime_settings import load as load_runtime_settings  # KWT_UNIFIED_WORKERS_V1_2
+
+    def _process_one(source):
+        project = get_project(source, output)
+        with project.lock:
+            if project.result.exists():
+                project.state = 'completed'; project.detail = '기존 결과가 있으므로 건너뜀'; return
+            project.state = 'running'; project.completed = 0; project.error = None
+        def progress(**kw):
             with project.lock:
-                if project.result.exists():
-                    project.state = 'completed'; project.detail = '기존 결과가 있으므로 건너뜀'; continue
-                project.state = 'running'; project.completed = 0; project.error = None
-            def progress(**kw):
-                with project.lock:
-                    stage = kw.get('stage', '')
-                    project.detail = (stage + ' | ' + str(kw.get('detail',''))).strip()
-                    if stage == '페이지 완료':
-                        name = kw['name']
-                        project.records[name] = kw.get('record') or {}
-                        rec = project.records[name]
-                        preview_path = Path(str(project.result) + '.layers') / ('page_%04d' % (int(rec.get('index', project.completed)) + 1)) / 'studio-live-preview.bin'
-                        preview_path.parent.mkdir(parents=True, exist_ok=True)
-                        preview_path.write_bytes(kw['image'])
-                        project.live[name] = str(preview_path)
-                        project.completed += 1
-            try:
-                result, metadata = process_zip(project.source, project.result.parent,
-                      report=lambda line: None, cancelled=lambda: False, progress=progress)
-                with project.lock:
-                    project.result = Path(result)
-                    project.meta_path = Path(metadata)
-                    project.load_metadata()
-                    project.state = 'finalizing'
-                    project.detail = '수동 수정 내역 최종 ZIP 반영 중'
-                    for name in list(project.edits):
-                        if name in project.records:
-                            project.commit_page(name)
-                            project._update_meta(name)
-                    project.state = 'completed'; project.detail = '처리 완료'
-                    for entry in list(project.live.values()):
-                        if isinstance(entry, str): Path(entry).unlink(missing_ok=True)
-                    project.live.clear()
-            except Exception as exc:
-                with project.lock:
-                    project.state = 'error'; project.error = str(exc)
-                    project.detail = str(exc)
-                traceback.print_exc()
+                stage = kw.get('stage', '')
+                project.detail = (stage + ' | ' + str(kw.get('detail',''))).strip()
+                if stage == '페이지 완료':
+                    name = kw['name']
+                    project.records[name] = kw.get('record') or {}
+                    rec = project.records[name]
+                    preview_path = Path(str(project.result) + '.layers') / ('page_%04d' % (int(rec.get('index', project.completed)) + 1)) / 'studio-live-preview.bin'
+                    preview_path.parent.mkdir(parents=True, exist_ok=True)
+                    preview_path.write_bytes(kw['image'])
+                    project.live[name] = str(preview_path)
+                    project.completed += 1
+        try:
+            result, metadata = process_zip(project.source, project.result.parent,
+                  report=lambda line: None, cancelled=lambda: False, progress=progress)
+            with project.lock:
+                project.result = Path(result)
+                project.meta_path = Path(metadata)
+                project.load_metadata()
+                project.state = 'finalizing'
+                project.detail = '수동 수정 내역 최종 ZIP 반영 중'
+                for name in list(project.edits):
+                    if name in project.records:
+                        project.commit_page(name)
+                        project._update_meta(name)
+                project.state = 'completed'; project.detail = '처리 완료'
+                for entry in list(project.live.values()):
+                    if isinstance(entry, str): Path(entry).unlink(missing_ok=True)
+                project.live.clear()
+        except Exception as exc:
+            with project.lock:
+                project.state = 'error'; project.error = str(exc)
+                project.detail = str(exc)
+            traceback.print_exc()
+    try:
+        # Snapshot ZIP worker count once at the beginning of the overall run.
+        workers = load_runtime_settings()['pipeline']['zip_workers']
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='kwt-zip') as pool:
+            futures = [pool.submit(_process_one, source) for source in paths]
+            for future in futures:
+                future.result()
     finally:
         with queue_lock:
             active_batch = False
@@ -682,8 +691,12 @@ class Handler(BaseHTTPRequestHandler):
                 output=body.get('output_dir')
                 if output and not Path(output).is_dir():
                     raise ValueError('출력 폴더가 존재하지 않습니다.')
-                for src in paths:
-                    get_project(src,output)
+                # KWT_UNIFIED_WORKERS_V1_2: reject duplicate sources/outputs before
+                # spawning any worker; avoids two ZIP threads writing the same name.
+                selected = [get_project(src,output) for src in paths]
+                names = [str(p.result.resolve()).casefold() for p in selected]
+                if len(names) != len(set(names)):
+                    raise ValueError('선택한 ZIP 중 출력 파일 경로가 중복됩니다. 파일명/출력 폴더를 확인하세요.')
                 with queue_lock:
                     if active_batch:return self._send(409,{'error':'기존 자동 작업이 진행 중입니다.'})
                     active_batch=True
