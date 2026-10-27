@@ -24,12 +24,7 @@ Windows Studio (Tauri 2 + React / TypeScript / Vite)
 
 ### Studio 실행 준비 (Windows)
 
-1. Python 3.11을 설치하고 기존 안내에 따라 `local-server/install.bat` 및 `local-server/Install_Hayai_OCR.bat`를 실행합니다. OCR·LaMa 모델은 별도로 준비해야 합니다. LaMa 모델은 `local-trans/models/big-lama.pt`를 사용하며 모델 가중치는 저장소에 포함되지 않습니다.
-2. Node.js/npm과, **데스크톱 앱**으로 실행하려면 Rust/Cargo, Microsoft C++ Build Tools 및 WebView2 환경을 준비합니다.
-3. 웹 GUI만 테스트하려면 루트의 `RUN_STUDIO_WEB.bat`을 실행합니다. Tauri 데스크톱은 `RUN_STUDIO.bat`을 실행하고, 정상 설정 후 콘솔창 없는 실행은 `RUN_STUDIO_SILENT.vbs`를 사용할 수 있습니다. 첫 실행은 `studio/`의 npm 패키지를 설치합니다.
-4. Studio의 **AI 서버 관리**에서 별도 설치된 Gemma llama.cpp 실행 폴더(`Launch.ps1`가 있는 폴더)를 설정하세요. 설치 경로는 사용자 환경에 맞게 직접 선택하며 저장소에 개인 경로를 포함하지 않습니다. 실제 모델 GGUF, llama.cpp 바이너리, 실행 스크립트 및 MTP draft 모델은 다운로드/준비해야 합니다. MTP 모드는 호환 서버·draft 모델이 있을 때만 작동합니다.
-5. ZIP 자동 처리 시 기본 출력은 `<원본이름>_ko.zip`과 `<원본이름>_ko.metadata.json`입니다. 이미지별 LaMa 복원 결과는 `.layers` 사이드카 디렉터리에 보존하여 재편집에 사용합니다. 출력 ZIP은 원본과 별개이며 기존 출력이 있으면 덮어쓰지 않습니다.
-6. 확장앱 연동은 **Studio > 웹 확장앱 관리**에서 페어링 코드를 발급하고 확장앱 설정에 입력해야 합니다. Chrome 사이트/이미지 호스트 권한은 브라우저가 관리하며 Studio가 자동 승인하지 않습니다.
+처음 설치할 때는 아래의 **처음 클론한 사용자를 위한 설치 가이드**를 순서대로 진행하세요.
 
 **안전/보안:** OCR/Bridge/Gemma API는 기본적으로 `127.0.0.1`에서 사용합니다. `studio-bridge/.studio_runtime/`에 있는 확장앱 연결 키·상태 파일을 커밋하지 마세요. OCR 결과, 번역 ZIP, 로그, 모델, 가상환경, `.env`도 공개 저장소에 올리지 마세요. 로컬 서버 전체 노출 또는 임의의 외부 코드 다운로드는 이 프로젝트의 기본 동작이 아닙니다.
 
@@ -104,135 +99,157 @@ KoneWebTranslator는 OCR과 Gemma 로컬 AI 번역을 사용하므로 일반적�
 
 **낮은 사양에서도 실행할 수 있나요?** 일부 구성은 더 낮은 사양에서도 가능하지만, 현재 설치 스크립트는 NVIDIA CUDA 환경을 중심으로 작성되어 있습니다. 따라서 **최소 사양 및 3~4초 성능은 다른 PC에서 검증되지 않았습니다.** VRAM이 부족하면 모델 크기·양자화·GPU 오프로딩 설정을 조정해야 하며 번역 속도가 크게 느려질 수 있습니다.
 
-## 설치 (Windows)
+## 처음 클론한 사용자를 위한 설치 가이드 (Windows)
 
-### 1. 저장소와 Python 준비
+이 프로젝트는 소스코드 배포본입니다. `.venv`, `node_modules`, AI 모델, llama.cpp 실행 파일은 포함하지 않습니다.
+
+### 1. 필수 프로그램 설치
+
+- Git: https://git-scm.com/download/win
+- Python 3.11 (Windows Python Launcher 포함): https://www.python.org/downloads/
+- Node.js LTS: https://nodejs.org/
+- 데스크톱 Studio에만 추가 필요: Rust/Cargo (https://rustup.rs/), Microsoft C++ Build Tools (Desktop development with C++), Microsoft Edge WebView2 Runtime
+- 현재 Hayai 설치 스크립트는 NVIDIA CUDA 12.8용 PyTorch를 사용합니다. NVIDIA GPU와 호환 드라이버가 권장됩니다.
+
+PowerShell에서 `git --version`, `py -3.11 --version`, `node --version`, `npm --version`으로 확인하세요. 데스크톱 빌드는 `cargo --version`도 확인합니다.
+
+### 2. 클론
 
 ```powershell
 git clone https://github.com/hungrymidlife/KoneWebTranslator-Public.git
 cd KoneWebTranslator-Public
 ```
 
-Python 3.11 및 Git을 설치하고 `py -3.11 --version`으로 확인하세요.
+**이후 명령어는 저장소 루트에서 실행합니다.**
 
-### 2. 로컬 OCR 서버 환경 설치
+### 3. 기본 환경 설치
 
-`local-server/install.bat`을 실행합니다. 이 스크립트는 `local-server/.venv`를 생성하고 `requirements.txt` 패키지를 설치합니다.
-
-```powershell
-cd local-server
-.\install.bat
-.\Install_Hayai_OCR.bat
-```
-
-Hayai는 별도 `local-server/.venv-hayai` 가상환경에 설치됩니다. 첫 실행에는 추가 모델 다운로드가 발생할 수 있습니다.
-
-### 3. Comic Text Detector 모델 설치
-
-KoneWebTranslator는 만화 이미지에서 일본어 글자가 있는 영역을 자동으로 찾기 위해 **Comic Text Detector**를 사용합니다.
-
-검출 모델은 용량이 크기 때문에 GitHub 저장소에 포함되어 있지 않습니다. 프로그램을 처음 설치하는 사용자는 아래 방법으로 모델 파일을 별도로 준비해야 합니다.
-
-**① 모델 다운로드**
-
-다음 GitHub Releases 페이지에 접속합니다.
-
-- [manga-image-translator 모델 다운로드 (beta-0.3)](https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3)
-- [Comic Text Detector 원본 프로젝트](https://github.com/dmMaze/comic-text-detector)
-
-Releases의 Assets에서 `comictextdetector.pt.onnx` 파일을 다운로드합니다.
-
-**② 모델 파일 배치**
-
-다운로드한 파일을 KoneWebTranslator의 다음 위치로 복사합니다.
-
-```text
-KoneWebTranslator-Public/
-└── local-server/
-    ├── detector_vendor/
-    ├── models/
-    │   └── comictextdetector.pt.onnx
-    ├── setup_detector.py
-    └── setup_detector.bat
-```
-
-`models` 폴더가 없다면 직접 생성하세요. 파일명은 반드시 `comictextdetector.pt.onnx`여야 합니다.
-
-**③ 검출 모델 초기화 및 테스트**
-
-PowerShell에서 다음 명령어를 실행합니다.
+루트의 `SETUP.bat`을 더블클릭하거나 다음을 실행합니다.
 
 ```powershell
-cd KoneWebTranslator-Public\local-server
-.\setup_detector.bat
+.\SETUP.bat
 ```
 
-이 스크립트는 다음 작업을 수행합니다.
-
-1. 모델 파일 존재 여부 확인
-2. 필요한 Python 패키지 확인 및 설치
-3. ONNX Runtime을 사용한 모델 초기화
-4. 테스트 이미지에 대한 검출 실행
-
-정상적으로 완료되면 다음 메시지가 표시됩니다.
+이 스크립트는 Python 기본 가상환경과 Studio npm 의존성을 설치하기 위한 것입니다. 설치 후 다음 파일/폴더가 있어야 합니다.
 
 ```text
-Smoke test OK.
-DETECTOR READY
-Detector installation successful.
+local-server/.venv/Scripts/python.exe
+studio/node_modules/
 ```
 
-**④ 기존 모델을 재사용하려면**
-
-동일한 모델 파일을 기존 KoneLocalTranslator 프로젝트에서 재사용할 수 있습니다. `setup_detector.py`는 기본적으로 기존 프로젝트의 모델 경로도 확인하므로, 파일을 자동으로 복사할 수 있습니다.
-
-이 기능은 기존 사용자의 편의를 위한 것으로, **별도 KoneLocalTranslator 설치는 필요하지 않습니다.**
-
-**문제 해결**
-
-- `ONNX model file not found`: 모델 파일이 `local-server/models/` 폴더에 있는지 확인하세요.
-- `Existing Python venv not found`: 먼저 `install.bat`을 실행하세요.
-- `ONNX model is suspiciously small`: 다운로드한 파일이 실제 ONNX 모델인지 확인하세요. Git LFS 포인터 파일을 잘못 저장했을 수 있습니다.
-- `ONNX initialized` 단계에서 오류 발생: 모델 파일 손상 여부와 ONNX Runtime 설치 상태를 확인하세요.
-
-모델의 사용 및 재배포 조건은 원본 프로젝트의 라이선스를 따릅니다.
-
-### 4. Gemma 번역 서버 설정
-
-llama.cpp 기반 로컬 번역 서버를 별도로 준비하고 GGUF 모델을 로드해 다음 주소에서 API를 제공해야 합니다.
-
-```text
-http://127.0.0.1:18080/v1
-```
-
-현재 프로그램의 기본 모델 ID는 `gemma4-12b-local`입니다. llama.cpp 서버에 설정된 모델 ID와 일치해야 합니다. 웹브라우저에서 다음 주소의 `data[].id`를 확인하세요.
-
-```text
-http://127.0.0.1:18080/v1/models
-```
-
-`RUN_STUDIO.bat`로 통합 Studio를 실행하고 **AI 서버 관리**에서 Gemma 및 OCR 서버를 제어합니다. Gemma 시작 기능은 별도의 `Launch.ps1`이 포함된 로컬 Gemma 설치 폴더가 필요하며 해당 실행 스크립트는 이 저장소에 포함되지 않습니다. 모델/실행 경로는 GUI에서 선택하세요.
-
-### 5. OCR 서버 실행
+`SETUP.bat`이 없는 이전 버전은 아래 명령을 사용하세요.
 
 ```powershell
-.\start.bat
+.\local-server\install.bat
+cd studio
+npm install
+cd ..
 ```
 
-아래 주소에서 상태를 확인합니다.
+가상환경은 다른 PC에서 복사하지 않고 **사용자 PC에서 새로 생성**합니다.
+
+### 4. Hayai OCR 설치
+
+```powershell
+.\SETUP_HAYAI.bat
+```
+
+이 파일이 없는 이전 버전은 `.\local-server\Install_Hayai_OCR.bat`을 실행합니다. 별도 `local-server/.venv-hayai` 환경에 CUDA PyTorch와 `hayai-ocr==2.2.0` 등을 설치합니다. 최초 OCR 시 추가 모델 다운로드가 발생할 수 있습니다.
+
+### 5. Comic Text Detector 모델 설치
+
+이 저장소에는 모델 가중치가 포함되지 않습니다. [manga-image-translator beta-0.3 릴리스](https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3) 및 [Comic Text Detector 원본](https://github.com/dmMaze/comic-text-detector)을 참고해 `comictextdetector.pt.onnx`를 확보하세요.
+
+배치 경로:
 
 ```text
-http://127.0.0.1:8765/health
+local-server/models/comictextdetector.pt.onnx
 ```
 
-### 6. Chrome 확장 프로그램 설치
+`models` 폴더가 없으면 만듭니다. 그다음 저장소 루트에서 실행합니다.
 
-1. Chrome 주소창에서 `chrome://extensions`를 엽니다.
-2. **개발자 모드**를 켭니다.
-3. **압축해제된 확장 프로그램을 로드합니다**를 선택합니다.
-4. 저장소의 `extension` 폴더를 선택합니다.
-5. 확장 아이콘에서 요소 선택기를 열고 이미지 컨테이너 선택자를 지정합니다.
-6. 규칙을 저장하고 필요한 이미지 호스트 접근 권한을 허용합니다.
+```powershell
+.\local-server\setup_detector.bat
+```
+
+정상 완료 시 `DETECTOR READY`와 `Detector installation successful.` 메시지가 출력됩니다. Git LFS 포인터 파일을 모델로 잘못 저장하지 않았는지 확인하세요.
+
+### 6. LaMa 이미지 복원 모델 설치
+
+ZIP 자동 식질의 원문 제거/이미지 복원 기능을 사용하려면 LaMa 모델을 별도로 준비하세요.
+
+```text
+local-trans/models/big-lama.pt
+```
+
+모델 출처와 라이선스는 [LaMa 원본](https://github.com/advimman/lama)에서 확인하세요. OCR/번역만 테스트할 경우와 전체 식질 파이프라인 테스트를 구분해야 합니다.
+
+### 7. Gemma 번역 서버 설치
+
+이 저장소에는 Gemma GGUF 가중치, llama.cpp 실행 파일, MTP draft 모델 및 사용자 PC의 `Launch.ps1`이 없습니다. 사용자가 별도로 호환 서버와 모델을 준비해야 합니다.
+
+- 기본 API: `http://127.0.0.1:18080/v1`
+- 모델 확인: `http://127.0.0.1:18080/v1/models`
+- 기본 모델 ID 예시: `gemma4-12b-local` (실제 서버 ID와 일치시켜야 함)
+
+Studio의 **AI 서버 관리**에서 Gemma 실행 폴더를 선택합니다. `Launch.ps1` 기반 실행 구성은 해당 스크립트가 준비되어 있어야 합니다. 모델을 다운로드하는 것만으로 서버가 자동 실행되지는 않습니다. MTP 기능은 호환 서버 및 draft 모델이 준비된 경우에만 사용합니다.
+
+### 8. Studio 실행
+
+**웹 GUI 테스트 (Rust 불필요)**
+
+```powershell
+.\RUN_STUDIO_WEB.bat
+```
+
+브라우저에서 `http://127.0.0.1:1420`을 엽니다.
+
+**Windows 데스크톱 GUI (Rust/C++ Build Tools/WebView2 필요)**
+
+```powershell
+.\RUN_STUDIO.bat
+```
+
+첫 빌드에서는 Rust 컴파일 시간이 걸릴 수 있습니다. 정상 실행 확인 후 `RUN_STUDIO_SILENT.vbs`로 콘솔창 없는 실행을 시도할 수 있습니다.
+
+두 BAT 파일 모두 기본 Python 가상환경을 필요로 합니다. `Python venv not found`가 나오면 **3단계**부터 진행하세요.
+
+### 9. Chrome 확장앱 설치 (웹페이지 번역을 사용하는 경우)
+
+1. Chrome에서 `chrome://extensions`로 이동합니다.
+2. 개발자 모드를 활성화합니다.
+3. **압축해제된 확장 프로그램을 로드합니다**를 선택하고 저장소의 `extension` 폴더를 지정합니다.
+4. Studio의 **웹 확장앱 관리**에서 페어링 코드를 발급하고 확장앱에 입력합니다.
+5. 사이트/이미지 호스트 권한을 Chrome에서 허용하고 이미지 수집 규칙을 설정합니다.
+
+### 10. 설치 점검
+
+저장소 루트의 PowerShell에서:
+
+```powershell
+Test-Path .\local-server\.venv\Scripts\python.exe
+Test-Path .\local-server\.venv-hayai\Scripts\python.exe
+Test-Path .\studio\node_modules
+Test-Path .\local-server\models\comictextdetector.pt.onnx
+Test-Path .\local-trans\models\big-lama.pt
+```
+
+각 항목을 설치했다면 `True`여야 합니다. OCR 서버 실행 후 `http://127.0.0.1:8765/health`, Gemma 서버 실행 후 `http://127.0.0.1:18080/v1/models`를 확인하세요.
+
+### 오류 해결
+
+| 증상 | 해결 |
+|---|---|
+| `Python venv not found` | `SETUP.bat` 또는 `local-server/install.bat` 실행 |
+| `py -3.11` 오류 | Python 3.11 및 Python Launcher 설치 |
+| `npm` 없음 | Node.js 설치 후 터미널 재시작 |
+| `cargo` 없음 | Rust 설치 또는 `RUN_STUDIO_WEB.bat` 사용 |
+| Comic Text Detector 파일 없음 | ONNX 모델을 정확한 경로에 배치하고 `setup_detector.bat` 실행 |
+| Gemma 연결 실패 | 18080 포트, `/v1/models` 응답, 모델 ID 확인 |
+| 확장앱 오류 | 확장앱과 웹페이지 새로고침 |
+
+**보안/라이선스:** `.venv`, `.venv-hayai`, `node_modules`, AI 모델, 로컬 설정, 인증 키, 작업 결과 및 로그를 Git에 커밋하지 마세요. 모델의 재배포 조건은 원저작권자의 라이선스를 따릅니다.
+
 
 ## 사용 방법
 
@@ -254,6 +271,8 @@ KoneWebTranslator-Public/
 │   ├── src/               # 편집 캔버스, AI/확장앱 관리 UI
 │   └── src-tauri/         # Windows 데스크톱 런타임
 ├── studio-bridge/          # 로컬 API 및 프로세스·로그 관리
+├── SETUP.bat               # Python 및 Studio 의존성 설치
+├── SETUP_HAYAI.bat         # Hayai OCR 설치
 ├── RUN_STUDIO.bat          # Tauri GUI 실행
 ├── RUN_STUDIO_WEB.bat      # 브라우저 기반 GUI 테스트
 ├── RUN_STUDIO_SILENT.vbs   # 콘솔 숨김 실행
