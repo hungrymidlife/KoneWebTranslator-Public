@@ -28,6 +28,11 @@ DEFAULTS = {
     'translation': {'max_region_count': 20, 'max_source_chars': 1200, 'timeout_sec': 120,
                     'top_k': 64, 'top_p': 0.9, 'min_p': 0.05},
     # KWT_UNIFIED_CHAT_V1_4: shared controls; per-conversation options remain in chat records.
+    # KWT_UNIFIED_IMAGE_V1_5: shared automatic/review profile.
+    'typesetting': {'lama_tile_size': 768, 'lama_tile_context': 72,
+                    'typeset_min_font_size': 8, 'typeset_max_font_size': 72,
+                    'typeset_padding_percent': 4.5, 'typeset_line_height_ratio': 1.24,
+                    'output_image_quality': 92, 'zip_compression_level': 6},
     'chat': {'context_reserve': 400, 'auto_reply_margin': 512, 'summary_batch_messages': 4,
              'summary_chunk_budget': 1150, 'summary_output_tokens': 700,
              'summary_max_chars': 2200, 'summary_previous_chars': 2000,
@@ -57,6 +62,12 @@ INTEGER_RULES = {
     ('chat', 'summary_previous_chars'): (500, 6000),
     ('chat', 'timeout_sec'): (30, 900),
     ('chat', 'continue_limit'): (1, 6),
+    ('typesetting', 'lama_tile_size'): (512, 1024),
+    ('typesetting', 'lama_tile_context'): (0, 256),
+    ('typesetting', 'typeset_min_font_size'): (8, 48),
+    ('typesetting', 'typeset_max_font_size'): (8, 96),
+    ('typesetting', 'output_image_quality'): (60, 100),
+    ('typesetting', 'zip_compression_level'): (0, 9),
 }
 FLOAT_RULES = {
     ('gemma', 'top_p'): (0.01, 1.0),
@@ -66,6 +77,8 @@ FLOAT_RULES = {
     ('ocr', 'pad_y_percent'): (0.0, 40.0),
     ('translation', 'top_p'): (0.01, 1.0),
     ('translation', 'min_p'): (0.0, 1.0),
+    ('typesetting', 'typeset_padding_percent'): (0.0, 15.0),
+    ('typesetting', 'typeset_line_height_ratio'): (1.0, 1.8),
 }
 
 
@@ -95,17 +108,21 @@ def normalize(value):
     if set(value) - set(DEFAULTS) or old_groups - set(value):
         raise ValueError('통합 설정 상위 필드가 누락되었거나 알 수 없는 필드가 있습니다.')
     result = copy.deepcopy(DEFAULTS)
-    for section in ('gemma', 'pipeline', 'ocr', 'translation', 'chat'):  # KWT_UNIFIED_CHAT_V1_4
+    for section in ('gemma', 'pipeline', 'ocr', 'translation', 'chat', 'typesetting'):  # KWT_UNIFIED_CHAT_V1_4
         data = value.get(section, {})
         if not isinstance(data, dict):
             raise ValueError(f'{section} 설정이 유효하지 않습니다.')
         missing = set(DEFAULTS[section]) - set(data)
         legacy_keys = ({'ocr_workers','translation_workers','zip_workers'} if section == 'pipeline'
-                       else set(DEFAULTS[section]) if section in ('ocr','translation','chat') else set())
+                       else set(DEFAULTS[section]) if section in ('ocr','translation','chat','typesetting') else set())
         if set(data) - set(DEFAULTS[section]) or missing - legacy_keys:
             raise ValueError(f'{section} 설정 항목이 누락되었거나 알 수 없는 항목이 있습니다.')
         for key, item in data.items():
             result[section][key] = _validate(section, key, item)
+    if result['typesetting']['typeset_min_font_size'] > result['typesetting']['typeset_max_font_size']:
+        raise ValueError('식질 최소 글꼴 크기가 최대 글꼴 크기보다 큽니다.')
+    if result['typesetting']['lama_tile_context'] * 2 >= result['typesetting']['lama_tile_size']:
+        raise ValueError('LaMa 문맥 길이가 타일 크기에 비해 너무 큽니다.')
     return result
 
 

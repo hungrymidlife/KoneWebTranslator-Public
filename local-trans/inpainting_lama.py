@@ -2,6 +2,7 @@
 from pathlib import Path
 import numpy as np
 from PIL import Image, ImageFilter, ImageOps
+from render_settings import load_render_settings  # KWT_UNIFIED_IMAGE_V1_5
 
 MODEL_PATH = Path(__file__).resolve().parent / 'models' / 'big-lama.pt'
 _model = None
@@ -88,8 +89,9 @@ def _tiles(boxes, width, height, max_side=768, context=72):
     return groups
 
 
-def restore(image, regions, report=None, cache_dir=None):
+def restore(image, regions, report=None, cache_dir=None, render_cfg=None):
     import torch
+    render_cfg = render_cfg if render_cfg is not None else load_render_settings()
     model = load_model()
     original = image.convert('RGB')
     try:
@@ -105,7 +107,9 @@ def restore(image, regions, report=None, cache_dir=None):
         return original, mask, {'engine':'lama','status':'empty_mask','tiles':[],**mask_info}
     result = original.copy()
     tiles=[]
-    for left,top,right,bottom in _tiles(boxes, original.width, original.height):
+    for left,top,right,bottom in _tiles(boxes, original.width, original.height,
+                                             max_side=render_cfg['lama_tile_size'],
+                                             context=render_cfg['lama_tile_context']):
         crop = original.crop((left,top,right,bottom))
         cmask = mask.crop((left,top,right,bottom))
         if not cmask.getbbox():

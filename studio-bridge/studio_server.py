@@ -33,6 +33,7 @@ from extension_service import get as extension_get, post as extension_post, EXT_
 BASE = Path(__file__).resolve().parent.parent
 TRANS = BASE / 'local-trans'
 sys.path.insert(0, str(TRANS))
+from render_settings import load_render_settings  # KWT_UNIFIED_IMAGE_V1_5
 # KWT_STUDIO_FONTS_V1_7_0
 from font_library import (list_fonts as kwt_list_fonts, register_bytes as kwt_register_font,
                           register_paths as kwt_import_fonts, select_default as kwt_font_default,
@@ -275,7 +276,8 @@ class Project:
     def _font(self, size, font_id='system'):
         return kwt_font_for(size, font_id)
 
-    def _manual_draw(self, painter, edit):
+    def _manual_draw(self, painter, edit, render_cfg=None):
+        render_cfg = render_cfg if render_cfg is not None else load_render_settings()
         # KWT_EDIT_TEXT_OVERFLOW_V1_9_3: bbox is editable layout guidance, NOT a
         # hard validation bound. Respect requested font size and never fail a
         # save because glyphs/lines exceed the original OCR-derived rectangle.
@@ -299,7 +301,7 @@ class Project:
         if not lines:
             return
         step = max(edit['font_size'] + 2 * stroke + 2,
-                   round(edit['font_size'] * 1.24) + 2 * stroke)
+                   round(edit['font_size'] * render_cfg['typeset_line_height_ratio']) + 2 * stroke)
         # The user may deliberately position or size text beyond its rectangle;
         # only the actual canvas/image boundary clips the drawn output.
         for i, line in enumerate(lines):
@@ -320,6 +322,7 @@ class Project:
     def render_image(self, name, edits_override=None):
         from typesetting_layout import layout_and_draw
         record = self.records.get(name, {})
+        render_cfg = record.get('render_settings') or load_render_settings()
         clean = self.background_path(name, record)
         if not clean.is_file():
             raise FileNotFoundError('텍스트 없는 복원 배경 파일이 없습니다: ' + str(clean))
@@ -336,7 +339,7 @@ class Project:
             if rid in edits:
                 if edits[rid].get('deleted'):
                     continue
-                self._manual_draw(painter, _normalize_edit(edits[rid], image.size))
+                self._manual_draw(painter, _normalize_edit(edits[rid], image.size), render_cfg)
                 continue
             text = str(region.get('translated_text') or typ.get('text') or '')
             if not text.strip(): continue
@@ -345,14 +348,14 @@ class Project:
             style = {'text_color': typ.get('text_color', '#000000'),
                      'stroke_color': typ.get('stroke_color') or '#ffffff'}
             # Matches existing automatic text layout implementation.
-            layout_and_draw(painter, text, bounds, lambda size: self._font(size,typ.get('font_id','system')), style)
+            layout_and_draw(painter, text, bounds, lambda size: self._font(size,typ.get('font_id','system')), style, render_cfg=render_cfg)
         # Draw user-created text boxes after automatic boxes.
         for rid, edit in edits.items():
             if MANUAL_LAYER_ID.fullmatch(str(rid)) and isinstance(edit, dict) and not edit.get('deleted'):
-                self._manual_draw(painter, _normalize_edit(edit, image.size))
+                self._manual_draw(painter, _normalize_edit(edit, image.size), render_cfg)
         return image
 
-    def _replace_zip_page(self, name, raw):
+    def _replace_zip_page(self, name, raw, compresslevel=6):
         if not self.result.is_file():
             return
         self.result.parent.mkdir(parents=True, exist_ok=True)
@@ -366,7 +369,7 @@ class Project:
                 writer.comment = reader.comment
                 for info in reader.infolist():
                     data = raw if info.filename == name else reader.read(info.filename)
-                    writer.writestr(info, data)
+                    writer.writestr(info, data, compresslevel=compresslevel if info.compress_type == zipfile.ZIP_DEFLATED else None)
             with zipfile.ZipFile(tmpname) as checker:
                 if checker.testzip() is not None:
                     raise IOError('ZIP 무결성 검사 실패')
@@ -376,13 +379,14 @@ class Project:
 
     def commit_page(self, name):
         if not self.result.exists() or not name in self.records: return
+        render_cfg = self.records[name].get('render_settings') or load_render_settings()
         image = self.render_image(name)
         out = io.BytesIO()
         ext = Path(name).suffix.lower()
         format_name = 'JPEG' if ext in ('.jpg', '.jpeg') else 'WEBP' if ext == '.webp' else 'PNG'
-        options = {'quality': 92} if format_name != 'PNG' else {}
+        options = {'quality': render_cfg['output_image_quality']} if format_name != 'PNG' else {}
         image.save(out, format=format_name, **options)
-        self._replace_zip_page(name, out.getvalue())
+        self._replace_zip_page(name, out.getvalue(), render_cfg['zip_compression_level'])
         self.live[name] = out.getvalue()
 
     def save(self, index, incoming):

@@ -3,6 +3,7 @@
 This module is deliberately independent of OCR, detector and LaMa.
 """
 from PIL import ImageFont
+from render_settings import load_render_settings  # KWT_UNIFIED_IMAGE_V1_5
 
 
 def _lines(draw, text, font, max_width, stroke):
@@ -40,28 +41,30 @@ def _lines(draw, text, font, max_width, stroke):
     return result
 
 
-def layout_and_draw(draw, text, bounds, font_for, style, prefer_vertical=None):
+def layout_and_draw(draw, text, bounds, font_for, style, prefer_vertical=None, render_cfg=None):
     """Always use horizontal Korean rows in the bbox, including tall narrow boxes.
 
     Individual lines start at a common left edge; rows have a fixed advance.
     Choose the largest fitting font; keep glyph aspect ratios unchanged.
     """
+    render_cfg = render_cfg if render_cfg is not None else load_render_settings()
     x, y, w, h = [int(v) for v in bounds]
     if w <= 0 or h <= 0 or not str(text).strip():
         return None
-    pad_x = max(2, round(w * 0.045))
-    pad_y = max(2, round(h * 0.045))
+    pad_x = 0 if render_cfg['typeset_padding_percent'] == 0 else max(2, round(w * render_cfg['typeset_padding_percent'] / 100.))
+    pad_y = 0 if render_cfg['typeset_padding_percent'] == 0 else max(2, round(h * render_cfg['typeset_padding_percent'] / 100.))
     inner_w, inner_h = w - 2 * pad_x, h - 2 * pad_y
     if inner_w <= 0 or inner_h <= 0:
         return None
     chosen = None
-    for size in range(min(72, max(8, inner_h)), 7, -1):
+    for size in range(min(render_cfg['typeset_max_font_size'], max(render_cfg['typeset_min_font_size'], inner_h)),
+                      render_cfg['typeset_min_font_size'] - 1, -1):
         font = font_for(size)
         stroke = max(1, min(3, 1 if size <= 18 else 2 if size <= 34 else 3))
         lines = _lines(draw, text, font, inner_w, stroke)
         if not lines:
             continue
-        line_h = max(size + stroke * 2 + 2, round(size * 1.24) + stroke * 2)
+        line_h = max(size + stroke * 2 + 2, round(size * render_cfg['typeset_line_height_ratio']) + stroke * 2)
         used_h = len(lines) * line_h
         if used_h > inner_h:
             continue
