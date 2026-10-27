@@ -42,7 +42,7 @@ CURRENT = None
 JOB = None
 
 TASKS = (
-    ('base_deps', '기본 Python 패키지', 'OCR 서버·Studio Bridge용 FastAPI, Pillow, NumPy 등 기본 의존성 검사/복구'),
+    ('base_deps', '기본 Python 패키지', 'OCR 서버·Studio Bridge용 FastAPI, Pillow, NumPy, OpenCV(말풍선 검출) 설치/복구'),  # KWT_BUBBLE_OPENCV_DEP_V1
     ('hayai', 'Hayai OCR', '일본어 OCR 전용 .venv-hayai와 PyTorch/CUDA 의존성 설치'),
     ('detector', 'Comic Text Detector', 'ONNX 모델·런타임·검출기 소스 및 실제 검출 작동 검사'),
     ('lama_torch', 'LaMa용 PyTorch', 'Studio 기본 .venv에 별도로 PyTorch 설치 (기존 누락 해결)'),
@@ -82,8 +82,14 @@ def _winocr_last_verified():
 def _snapshot_item(key, title, description):
     unknown = False
     if key == 'base_deps':
-        ok = VENV.is_file() and all(_site_has(VENV, name) for name in ('fastapi', 'uvicorn', 'pydantic', 'PIL', 'numpy'))
-        detail = '기본 Python 패키지 발견' if ok else '기본 서버 패키지 누락 · SETUP.bat 재실행 없이 복구 가능'
+        # KWT_BUBBLE_OPENCV_DEP_V1: the bubble layout uses cv2 in the same .venv as Studio Bridge.
+        site = SITES(VENV)
+        cv2_pinned = (_site_has(VENV, 'cv2') and
+                      any(site.glob('opencv_python_headless-4.11.0.86.dist-info')))
+        ok = VENV.is_file() and cv2_pinned and all(
+            _site_has(VENV, name) for name in ('fastapi', 'uvicorn', 'pydantic', 'PIL', 'numpy'))
+        detail = ('기본 Python 패키지 + OpenCV 4.11.0.86 파일 발견' if ok else
+                  '기본 패키지 또는 OpenCV(headless 4.11.0.86) 누락 · 설치/복구 필요')
     elif key == 'hayai':
         ok = HAYAI.is_file() and _site_has(HAYAI, 'torch') and _site_has(HAYAI, 'hayai_ocr')
         detail = '전용 Python 및 패키지 발견' if ok else 'Hayai 전용 환경 또는 패키지 누락'
@@ -168,8 +174,13 @@ def _online(port, route):
 def _test_steps(task):
     base = str(VENV)
     test_code = {
-        'base_deps': ('import fastapi,uvicorn,pydantic,numpy; from PIL import Image; '
-                      'print("[OK] Studio/OCR base packages:",fastapi.__version__,pydantic.__version__,numpy.__version__)'),
+        # KWT_BUBBLE_OPENCV_DEP_V1: binary + version + connected-component smoke test.
+        'base_deps': ('import fastapi,uvicorn,pydantic,numpy,cv2; from PIL import Image; '
+                      'from importlib.metadata import version; '
+                      'assert version("opencv-python-headless")=="4.11.0.86", "OpenCV version mismatch"; '
+                      'assert cv2.__version__=="4.11.0", "OpenCV imported unexpected build"; '
+                      'assert cv2.connectedComponentsWithStats(numpy.zeros((10,10),dtype=numpy.uint8))[0]>=1; '
+                      'print("[OK] Studio/OCR base packages + bubble OpenCV:", cv2.__version__)'),
         'hayai': 'import torch,transformers,hayai_ocr; print("[OK] Hayai packages; torch:",torch.__version__,"CUDA:",torch.cuda.is_available())',
         'detector': ('import sys; from pathlib import Path; from PIL import Image; '
                      'sys.path.insert(0,r"'+str(ROOT/'local-server')+'"); '

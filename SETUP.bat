@@ -11,6 +11,8 @@ if not exist "local-server\.venv\Scripts\python.exe" (
 )
 "local-server\.venv\Scripts\python.exe" -m pip install --upgrade pip || goto failed
 "local-server\.venv\Scripts\python.exe" -m pip install -r "local-server\requirements.txt" || goto failed
+rem KWT_BUBBLE_OPENCV_DEP_V1: verify OpenCV loads in the exact Studio Bridge Python.
+"local-server\.venv\Scripts\python.exe" -c "import cv2; from importlib.metadata import version; assert version('opencv-python-headless')=='4.11.0.86'; print('[OK] Bubble OpenCV:',cv2.__version__)" || goto failed
 echo [2/3] Installing Studio dependencies...
 pushd studio
 if exist package-lock.json (

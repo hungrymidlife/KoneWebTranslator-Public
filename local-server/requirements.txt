@@ -3,3 +3,5 @@ uvicorn>=0.30,<1
 pydantic>=2,<3
 pillow>=10,<13
 numpy>=1.26,<3
+# KWT_BUBBLE_OPENCV_DEP_V1: pinned for Windows Python 3.11; no GUI backends needed.
+opencv-python-headless==4.11.0.86
