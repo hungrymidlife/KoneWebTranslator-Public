@@ -9,6 +9,8 @@ import zipfile
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageStat
 from inpainting_lama import restore as lama_restore
+# KWT_STUDIO_FONTS_V1_7_0: font library shared with Studio.
+from font_library import font_for as kwt_registered_font, default_font_id as kwt_default_font_id
 
 API = 'http://127.0.0.1:8765'
 EXTS = {'.jpg', '.jpeg', '.png', '.webp'}
@@ -42,10 +44,7 @@ def entries(zf):
 
 
 def font_for(size):
-    for filename in ('C:/Windows/Fonts/malgun.ttf', 'C:/Windows/Fonts/malgunbd.ttf'):
-        if Path(filename).exists():
-            return ImageFont.truetype(filename, size)
-    return ImageFont.load_default()
+    return kwt_registered_font(size)
 
 
 def wrap_text(draw, text, font, width):
@@ -125,6 +124,7 @@ def typeset(raw, regions, report=None, text_color_mode='auto', cache_dir=None):
             layout_box = None
             layout_reason = 'safe_layout_overflow_fallback'
         if info is not None:
+            info['font_id'] = kwt_default_font_id()
             info['layout_source'] = layout_reason if layout_box else 'ocr_bbox_fallback'
             info['bubble_detection_reason'] = layout_reason
             info['typesetting_bbox'] = list(layout_box or (x,y,w,h))

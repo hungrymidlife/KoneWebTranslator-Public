@@ -4,8 +4,9 @@ import {FolderOpen,Play,ChevronLeft,ChevronRight,Save,Layers3,Eye,EyeOff,Refresh
 import EditorCanvas from './EditorCanvas'
 import ControlCenter,{StatusDots,useEngineStatus,type StudioSection} from './ControlCenter'
 import ExtensionCenter from './ExtensionCenter'
-import {LayoutDashboard,Server,Languages,ScanText,Terminal,Settings2,Menu} from 'lucide-react'
-import {api,imageUrl,type Project,type PageData,type PageList,type LayerData,type ZipItem} from './api'
+import FontManager from './FontManager'
+import {LayoutDashboard,Server,Languages,ScanText,Terminal,Settings2,Menu,Type} from 'lucide-react'
+import {api,imageUrl,fontFileUrl,type FontLibrary,type Project,type PageData,type PageList,type LayerData,type ZipItem} from './api'
 
 // KWT_STUDIO_LAYER_CRUD_V1_6_1
 type KwtLayerEdit = LayerData | {region_id:string;deleted:true}
@@ -112,6 +113,27 @@ export default function App(){
   const [page,setPage]=useState<PageData|null>(null)
   const [layers,setLayers]=useState<LayerData[]>([])
   const [selected,setSelected]=useState<string|null>(null)
+  // KWT_STUDIO_FONTS_V1_7_0: library + registered browser font faces.
+  const [fontLibrary,setFontLibrary]=useState<FontLibrary>({default_id:'system',fonts:[]})
+  const [fontVersion,setFontVersion]=useState(0)
+  const fontFacesLoaded=useRef(new Set<string>())
+  const refreshFonts=useCallback(async()=>{
+    const data=await api<FontLibrary>('/api/fonts')
+    for(const font of data.fonts){
+      if(font.built_in||fontFacesLoaded.current.has(font.id))continue
+      const family=`KWTFont_${font.id}`
+      try{
+        const face=new FontFace(family,`url("${fontFileUrl(font.id)}")`)
+        await face.load()
+        document.fonts.add(face)
+        fontFacesLoaded.current.add(font.id)
+      }catch(e){console.warn('[Studio Fonts] preview fallback',font.name,e)}
+    }
+    setFontLibrary(data)
+    setFontVersion(v=>v+1)
+  },[])
+  useEffect(()=>{void refreshFonts().catch(()=>{})},[refreshFonts])
+  useEffect(()=>{if(section==='editor')void refreshFonts().catch(()=>{})},[section,refreshFonts])
   const [dirty,setDirty]=useState<Record<string,KwtLayerEdit>>({})
   const [saveBusy,setSaveBusy]=useState(false)
   const [savingMessage,setSavingMessage]=useState('')
@@ -211,6 +233,7 @@ export default function App(){
     let stop:undefined|(()=>void)
     import('@tauri-apps/api/core').then(c=>{if(!c.isTauri())return;return import('@tauri-apps/api/webview').then(async v=>{
       stop=await v.getCurrentWebview().onDragDropEvent(e=>{
+        if(section==='fonts')return
         if(e.payload.type==='drop'&&e.payload.paths.length){
           const p=e.payload.paths[0]
           if(p.toLowerCase().endsWith('.zip')){
@@ -220,7 +243,7 @@ export default function App(){
       })
     })}).catch(()=>{})
     return()=>{stop?.()}
-  },[])
+  },[section])
 
   const scan=async()=>{try{const found=await api<ZipItem[]>('/api/scan',{root,recursive});setZips(found);setSelectedZips([]);setMessage(null)}catch(e){pushError(e)}}
   const openZip=async(path:string)=>{
@@ -251,7 +274,7 @@ export default function App(){
     const region_id=`manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`
     const created:LayerData={
       region_id,ocr_bbox:[...bbox],bbox,source_text:'',text:'새 번역',
-      font_size:origin?.font_size||24,text_color:origin?.text_color||'#000000',
+      font_size:origin?.font_size||24,font_id:fontLibrary.default_id,text_color:origin?.text_color||'#000000',
       stroke_color:origin?.stroke_color||'#ffffff',stroke_width:origin?.stroke_width??2,
       align:origin?.align||'center',visible:true,edited:true
     }
@@ -310,7 +333,7 @@ export default function App(){
   return <div className="app">
     <header className="topbar">
       <div className="brand"><span className="brand-mark"><Layers3 size={21}/></span><div><strong>KoneWebTranslator</strong><small>STUDIO <em>v0.2</em></small></div></div>
-      <div className="menu-tabs"><span className="studio-page-title">{({editor:'번역 · 검수 · 편집',servers:'AI 서버 관리',translation:'번역 설정',ocr:'OCR 설정',logs:'로그 · 진단',settings:'환경 설정',extension:'웹 확장앱 관리'} as Record<StudioSection,string>)[section]}</span></div>
+      <div className="menu-tabs"><span className="studio-page-title">{({editor:'번역 · 검수 · 편집',servers:'AI 서버 관리',translation:'번역 설정',ocr:'OCR 설정',logs:'로그 · 진단',settings:'환경 설정',extension:'웹 확장앱 관리',fonts:'폰트 관리'} as Record<StudioSection,string>)[section]}</span></div>
       <div className="top-actions"><StatusDots status={engineStatus}/><span className={'connection '+(connected?'online':'offline')}><i/>{connected?'로컬 브리지 연결됨':'브리지 연결 필요'}</span><button className="flat" onClick={()=>void refreshProjects()} title="연결 새로고침"><RefreshCw size={17}/></button><button className="flat" title="전체 화면(F11)" onClick={()=>void import('@tauri-apps/api/window').then(async m=>{const w=m.getCurrentWindow();await w.setFullscreen(!(await w.isFullscreen()))}).catch(()=>{})}><Maximize2 size={16}/></button></div>
     </header>
     <div className="unified-body">
@@ -321,6 +344,7 @@ export default function App(){
           ['servers','AI 서버 관리',Server],
           ['translation','번역 설정',Languages],
           ['ocr','OCR 설정',ScanText],
+          ['fonts','폰트 관리',Type],
           ['extension','웹 확장앱 관리',Puzzle],
           ['logs','로그 · 진단',Terminal],
           ['settings','환경 설정',Settings2],
@@ -360,7 +384,7 @@ export default function App(){
           {active&&page&&<div className={'compare '+effectiveView}>
             {view!=='edit'&&<div className="image-panel"><div className="panel-title"><span>일본어 원본</span><span className="label-muted">참조 레이어</span></div><div className="reference-image">{currentSource&&<img src={currentSource} alt="일본어 원본"/>}</div></div>}
             {view!=='source'&&<div className="image-panel editor-panel"><div className="panel-title"><span>한국어 식질 결과</span><span className={page.editable?'label-ok':'label-warn'}>{page.editable?'편집 가능':'자동 처리 대기/배경 없음'}</span></div>
-              {page.editable?<EditorCanvas image={currentClean} layers={layers} ocr={page.ocr} selected={selected} onSelect={setSelected} onUpdate={update} showOCR={ocrVisible} editable={page.editable} maximize={editorFocus}/>
+              {page.editable?<EditorCanvas image={currentClean} layers={layers} ocr={page.ocr} selected={selected} onSelect={setSelected} onUpdate={update} showOCR={ocrVisible} editable={page.editable} maximize={editorFocus} fontVersion={fontVersion}/>
                 :<div className="reference-image">{currentResult?<img src={currentResult} alt="한국어 식질 결과"/>:<div className="empty-layer">해당 페이지 자동 처리를 기다리는 중</div>}</div>}
             </div>}
           </div>}
@@ -373,6 +397,10 @@ export default function App(){
           <button className="secondary kwt-delete-layer" onClick={deleteLayer} title="선택한 식질 박스 삭제 (Delete)">선택 박스 삭제</button>
           <div className="property-field"><label>일본어 OCR</label><div className="original-text">{selectedLayer.source_text}</div></div>
           <div className="property-field"><label>한국어 텍스트</label><textarea id="layer-text" rows={5} value={selectedLayer.text} onChange={e=>update(selectedLayer.region_id,{text:e.target.value})}/></div>
+          <div className="property-field kwt-font-property"><label>폰트</label><select value={selectedLayer.font_id||'system'} onChange={e=>update(selectedLayer.region_id,{font_id:e.target.value})}>
+            {fontLibrary.fonts.map(font=><option value={font.id} key={font.id}>{font.name}{fontLibrary.default_id===font.id?' (기본)':''}</option>)}
+            {selectedLayer.font_id&&!fontLibrary.fonts.some(f=>f.id===selectedLayer.font_id)&&<option value={selectedLayer.font_id}>등록되지 않은 폰트 (대체 표시)</option>}
+          </select><button className="subtle-btn" onClick={()=>setSection('fonts')}>폰트 관리</button></div>
           <div className="property-field"><label>글자 크기 <strong>{selectedLayer.font_size}px</strong></label><input type="range" min={8} max={110} step={1} value={selectedLayer.font_size} onChange={e=>update(selectedLayer.region_id,{font_size:+e.target.value})}/><input type="number" min={8} max={180} value={selectedLayer.font_size} onChange={e=>update(selectedLayer.region_id,{font_size:+e.target.value||8})}/></div>
           <div className="coordinate-grid">{['X','Y','너비','높이'].map((lab,i)=><label key={i}>{lab}<input type="number" value={Math.round(selectedLayer.bbox[i])} onChange={e=>{const box=[...selectedLayer.bbox];box[i]=+e.target.value;update(selectedLayer.region_id,{bbox:box})}}/></label>)}</div>
           <div className="property-field"><label>정렬</label><div className="select-group">{(['left','center','right'] as const).map(a=><button key={a} className={a===selectedLayer.align?'active':''} onClick={()=>update(selectedLayer.region_id,{align:a})}>{a==='left'?'왼쪽':a==='center'?'가운데':'오른쪽'}</button>)}</div></div>
@@ -384,7 +412,8 @@ export default function App(){
       </aside>
     </div>
     {section==='extension'&&<ExtensionCenter/>}
-    {section!=='editor'&&section!=='extension'&&<ControlCenter section={section} status={engineStatus} onStatusRefresh={refreshEngineStatus}/>}
+    {section==='fonts'&&<FontManager onChanged={()=>void refreshFonts().catch(()=>{})}/>}
+    {section!=='editor'&&section!=='extension'&&section!=='fonts'&&<ControlCenter section={section} status={engineStatus} onStatusRefresh={refreshEngineStatus}/>}
     </div></div>
     <AnimatePresence>{message&&<motion.div className="toast" initial={{opacity:0,y:15}} animate={{opacity:1,y:0}} exit={{opacity:0,y:15}}><AlertCircle size={19}/><span>{message}</span><button onClick={()=>setMessage(null)}>닫기</button></motion.div>}</AnimatePresence>
   </div>

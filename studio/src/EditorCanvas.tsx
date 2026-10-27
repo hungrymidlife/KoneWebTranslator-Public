@@ -3,13 +3,13 @@ import {Stage,Layer,Image as KImage,Text as KText,Rect,Transformer} from 'react-
 import Konva from 'konva'
 import type {LayerData} from './api'
 
-type Props={image:string;layers:LayerData[];ocr:number[][];selected:string|null;onSelect:(id:string|null)=>void;onUpdate:(id:string,patch:Partial<LayerData>)=>void;showOCR:boolean;editable:boolean;maximize?:boolean} // KWT_CANVAS_MAXFIT_V1_5_1
+type Props={image:string;layers:LayerData[];ocr:number[][];selected:string|null;onSelect:(id:string|null)=>void;onUpdate:(id:string,patch:Partial<LayerData>)=>void;showOCR:boolean;editable:boolean;maximize?:boolean;fontVersion?:number} // KWT_STUDIO_FONTS_V1_7_0 // KWT_CANVAS_MAXFIT_V1_5_1
 function useHTMLImage(url:string){
   const [img,setImg]=useState<HTMLImageElement|null>(null)
   useEffect(()=>{if(!url){setImg(null);return}const im=new window.Image();let active=true;im.onload=()=>{if(active)setImg(im)};im.onerror=()=>{if(active)setImg(null)};im.src=url;return()=>{active=false}},[url])
   return img
 }
-export default function EditorCanvas({image,layers,ocr,selected,onSelect,onUpdate,showOCR,editable,maximize=false}:Props){
+export default function EditorCanvas({image,layers,ocr,selected,onSelect,onUpdate,showOCR,editable,maximize=false,fontVersion=0}:Props){
   const host=useRef<HTMLDivElement>(null)
   const transformer=useRef<Konva.Transformer>(null)
   const nodeRefs=useRef<Record<string,Konva.Text|null>>({})
@@ -45,9 +45,9 @@ export default function EditorCanvas({image,layers,ocr,selected,onSelect,onUpdat
       <Layer>
         {pic&&<KImage image={pic} width={dims.width} height={dims.height} name="background" listening/>}
         {showOCR&&ocr.map((box,i)=>Array.isArray(box)&&box.length===4?<Rect key={i} x={box[0]} y={box[1]} width={box[2]} height={box[3]} stroke="#ffb86d" strokeWidth={1.3/stageScale} dash={[6/stageScale,4/stageScale]} listening={false}/>:null)}
-        {layers.filter(t=>t.visible).map(layer=><KText key={layer.region_id} ref={node=>{nodeRefs.current[layer.region_id]=node}}
+        {layers.filter(t=>t.visible).map(layer=><KText key={`${layer.region_id}-${fontVersion}`} ref={node=>{nodeRefs.current[layer.region_id]=node}}
           text={layer.text} x={layer.bbox[0]} y={layer.bbox[1]} width={layer.bbox[2]} height={layer.bbox[3]}
-          fontFamily="Malgun Gothic, 맑은 고딕, sans-serif" fontSize={layer.font_size} fill={layer.text_color}
+          fontFamily={layer.font_id&&layer.font_id!=='system'?`KWTFont_${layer.font_id}`:'Malgun Gothic, 맑은 고딕, sans-serif'} fontSize={layer.font_size} fill={layer.text_color}
           stroke={layer.stroke_width>0?layer.stroke_color:undefined} strokeWidth={layer.stroke_width*2}
           fillAfterStrokeEnabled={true} wrap="char" lineHeight={1.24} align={layer.align} verticalAlign="top"
           padding={Math.min(4,Math.max(1,layer.bbox[2]/20))}
