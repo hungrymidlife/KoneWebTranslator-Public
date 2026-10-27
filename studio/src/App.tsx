@@ -138,6 +138,12 @@ export default function App(){
   const [saveBusy,setSaveBusy]=useState(false)
   const [savingMessage,setSavingMessage]=useState('')
   const [message,setMessage]=useState<string|null>(null)
+  // KWT_BRIDGE_RESTART_V1_8_0
+  const [bridgeRestartConfirm,setBridgeRestartConfirm]=useState(false)
+  const [bridgeRestartBusy,setBridgeRestartBusy]=useState(false)
+  // KWT_FONT_BULK_V1_9_0
+  const [fontBulkConfirm,setFontBulkConfirm]=useState(false)
+  const [fontBulkBusy,setFontBulkBusy]=useState(false)
   const [ocrVisible,setOCRVisible]=useState(()=>boolPref('ocrVisible',false))
   const [leftOpen,setLeftOpen]=useState(()=>boolPref('leftOpen',true))
   const [view,setView]=useState<'split'|'edit'|'source'>(viewPref)
@@ -180,6 +186,48 @@ export default function App(){
   // KWT_STUDIO_PREFERENCES_V1_6: persist only UI preferences, never unsaved layer changes.
   useEffect(()=>{persistPrefs({section,navExpanded,root,output,recursive,ocrVisible,leftOpen,view,follow,filter})},
     [section,navExpanded,root,output,recursive,ocrVisible,leftOpen,view,follow,filter])
+
+  // KWT_BRIDGE_RESTART_V1_8_0: self-restart the owned local Bridge only.
+  // Never restart the OCR/Gemma processes or kill a port by name.
+  const restartBridge=async()=>{
+    if(bridgeRestartBusy)return
+    setBridgeRestartBusy(true)
+    setBridgeRestartConfirm(false)
+    try{
+      if(Object.keys(dirtyRef.current).length||saveBusy){
+        throw new Error('저장되지 않은 식질 수정이 있습니다. 저장하거나 취소한 후 다시 시도하세요.')
+      }
+      const result=await api<{restarting:boolean;old_pid:number}>('/api/bridge/restart',{})
+      if(!result.restarting)throw new Error('Bridge 재시작 요청이 처리되지 않았습니다.')
+      setConnected(false)
+      let fresh=false
+      for(let attempt=0;attempt<50;attempt++){
+        await new Promise<void>(resolve=>window.setTimeout(resolve,350))
+        try{
+          const response=await api<{ok:boolean;bridge_pid?:number}>('/api/health')
+          if(response.ok && typeof response.bridge_pid==='number' && response.bridge_pid!==result.old_pid){
+            fresh=true;break
+          }
+        }catch{/* Restart is temporarily taking the port offline. */}
+      }
+      if(!fresh)throw new Error('Bridge가 재시작 중이거나 응답하지 않습니다. 잠시 후 새로고침을 시도하세요.')
+      setProjects([])
+      setActive(null)
+      setPages([])
+      setPage(null)
+      setLayers([])
+      setDirty({})
+      setSelected(null)
+      await refreshBridgeProjects()
+      setMessage('Studio Bridge를 재시작했습니다. OCR·Gemma 서버는 그대로 유지됩니다.')
+    }catch(e){setMessage(e instanceof Error?e.message:String(e))}
+    finally{setBridgeRestartBusy(false)}
+  }
+  // Named separately to avoid a closure on a not-yet-initialized callback.
+  const refreshBridgeProjects=async()=>{
+    const list=await api<Project[]>('/api/projects')
+    setConnected(true);setProjects(list)
+  }
 
   const refreshProjects=useCallback(async()=>{
     try{const list=await api<Project[]>('/api/projects');setConnected(true);setProjects(list)}
@@ -253,6 +301,20 @@ export default function App(){
     const files=selectedZips.length?selectedZips:activeProject?[activeProject.source]:[]
     if(!files.length){setMessage('ZIP 목록에서 처리할 파일을 선택하세요.');return}
     try{await api('/api/process',{paths:files,output_dir:output.trim()||undefined});await refreshProjects();setMessage(null);if(!active)await openZip(files[0])}catch(e){pushError(e)}
+  }
+  // KWT_FONT_BULK_V1_9_0: selected ZIP only; never overwrite unsaved canvas changes.
+  const applyDefaultFont=async()=>{
+    setFontBulkConfirm(false)
+    if(!activeProject||fontBulkBusy)return
+    if(Object.keys(dirtyRef.current).length||saveBusy){setMessage('현재 페이지의 미저장 변경을 먼저 저장하세요.');return}
+    setFontBulkBusy(true)
+    try{
+      const result=await api<{ok:boolean;font_id:string;processed_pages:number;changed_boxes:number;skipped_pages:number;errors:string[]}>('/api/fonts/apply-default',{id:activeProject.id})
+      setVersion(v=>v+1)
+      await loadPages(activeProject.id)
+      await loadPage(activeProject.id,indexRef.current,false)
+      setMessage(`기본 폰트 일괄 적용: ${result.changed_boxes}개 박스 / ${result.processed_pages}페이지${result.skipped_pages?` · 건너뜀 ${result.skipped_pages}페이지`:''}${result.errors.length?' · 일부 오류: '+result.errors[0]:''}`)
+    }catch(e){pushError(e)}finally{setFontBulkBusy(false)}
   }
   // KWT_STUDIO_LAYER_CRUD_V1_6_1: persist new/deleted layers as edits.
   const update=(rid:string,patch:Partial<LayerData>)=>{
@@ -334,7 +396,7 @@ export default function App(){
     <header className="topbar">
       <div className="brand"><span className="brand-mark"><Layers3 size={21}/></span><div><strong>KoneWebTranslator</strong><small>STUDIO <em>v0.2</em></small></div></div>
       <div className="menu-tabs"><span className="studio-page-title">{({editor:'번역 · 검수 · 편집',servers:'AI 서버 관리',translation:'번역 설정',ocr:'OCR 설정',logs:'로그 · 진단',settings:'환경 설정',extension:'웹 확장앱 관리',fonts:'폰트 관리'} as Record<StudioSection,string>)[section]}</span></div>
-      <div className="top-actions"><StatusDots status={engineStatus}/><span className={'connection '+(connected?'online':'offline')}><i/>{connected?'로컬 브리지 연결됨':'브리지 연결 필요'}</span><button className="flat" onClick={()=>void refreshProjects()} title="연결 새로고침"><RefreshCw size={17}/></button><button className="flat" title="전체 화면(F11)" onClick={()=>void import('@tauri-apps/api/window').then(async m=>{const w=m.getCurrentWindow();await w.setFullscreen(!(await w.isFullscreen()))}).catch(()=>{})}><Maximize2 size={16}/></button></div>
+      <div className="top-actions"><StatusDots status={engineStatus}/><span className={'connection '+(connected?'online':'offline')}><i/>{connected?'로컬 브리지 연결됨':'브리지 연결 필요'}</span><button className="flat" disabled={bridgeRestartBusy} onClick={()=>setBridgeRestartConfirm(true)} title="Studio Bridge 재시작 (작업 상태 초기화)" aria-label="Studio Bridge 재시작"><RefreshCw size={17}/></button><button className="flat" title="전체 화면(F11)" onClick={()=>void import('@tauri-apps/api/window').then(async m=>{const w=m.getCurrentWindow();await w.setFullscreen(!(await w.isFullscreen()))}).catch(()=>{})}><Maximize2 size={16}/></button></div>
     </header>
     <div className="unified-body">
       <nav className={'studio-nav '+(navExpanded?'expanded':'compact')} aria-label="Studio 화면 선택">
@@ -372,7 +434,7 @@ export default function App(){
           <div className="doc-label">{!leftOpen&&<button className="icon-btn" onClick={()=>setLeftOpen(true)}><PanelLeftOpen size={20}/></button>}
             <div><div className="eyebrow">편집 작업영역</div><b title={activeProject?.source}>{activeProject?.source_name||'ZIP을 선택하세요'}</b></div></div>
           <div className="page-nav"><button className="icon-btn" onClick={()=>nav(index-1)} disabled={!active||index<=0}><ChevronLeft size={20}/></button><span><strong>{active?index+1:0}</strong><small> / {pages.length}</small></span><button className="icon-btn" onClick={()=>nav(index+1)} disabled={!active||index>=pages.length-1}><ChevronRight size={20}/></button></div>
-          <div className="toolbar-actions"><button className="subtle-btn kwt-focus-toggle" onClick={toggleEditorFocus} aria-pressed={editorFocus} title={editorFocus?'식질 전체화면 닫기 (Esc)':'한국어 식질 전체화면'}><Maximize2 size={15}/>{editorFocus?'전체화면 종료':'식질 전체화면'}</button><label className="mini-check"><input type="checkbox" checked={ocrVisible} onChange={e=>setOCRVisible(e.target.checked)}/> OCR 박스</label><label className="mini-check"><input type="checkbox" checked={follow} onChange={e=>setFollow(e.target.checked)}/> 자동 따라가기</label><div className="view-switch"><button className={view==='split'?'selected':''} onClick={()=>setView('split')}>비교</button><button className={view==='edit'?'selected':''} onClick={()=>setView('edit')}>편집 집중</button><button className={view==='source'?'selected':''} onClick={()=>setView('source')}>원본</button></div></div>
+          <div className="toolbar-actions"><label className="mini-check"><input type="checkbox" checked={ocrVisible} onChange={e=>setOCRVisible(e.target.checked)}/> OCR 박스</label><label className="mini-check"><input type="checkbox" checked={follow} onChange={e=>setFollow(e.target.checked)}/> 자동 따라가기</label><div className="view-switch"><button className={view==='split'?'selected':''} onClick={()=>setView('split')}>비교</button><button className={view==='edit'?'selected':''} onClick={()=>setView('edit')}>편집 집중</button><button className={view==='source'?'selected':''} onClick={()=>setView('source')}>원본</button><button className={"kwt-focus-toggle"+(editorFocus?" selected":"")} onClick={toggleEditorFocus} aria-pressed={editorFocus} title={editorFocus?'식질 전체화면 닫기 (Esc)':'한국어 식질 전체화면'}><Maximize2 size={15}/>{editorFocus?'전체화면 종료':'식질 전체화면'}</button></div></div>
         </div>
         {activeProject&&<div className="progress-strip"><div className="progress-line"><span style={{width:`${activeProject.total?activeProject.completed/activeProject.total*100:0}%`}}/></div><span><Clock size={13}/> {activeProject.detail} ({activeProject.completed}/{activeProject.total})</span></div>}
         <div className="page-strip scroll">{pages.map(p=><button key={p.index} className={'page-thumb '+(index===p.index?'active':'')} onClick={()=>nav(p.index)} title={p.name}>
@@ -391,7 +453,7 @@ export default function App(){
         </div>
         <div className="bottom-bar"><span><span className={'state-dot '+(Object.keys(dirty).length?'changed':'')}/>{Object.keys(dirty).length?'저장되지 않은 변경 있음':savingMessage||'변경 사항 없음'}</span><span>글자 클릭 선택 · 드래그 위치 · 모서리 크기 · Ctrl+S 저장</span><button className="primary" onClick={()=>void save()} disabled={!page?.editable||!Object.keys(dirty).length||saveBusy}><Save size={16}/>{saveBusy?'저장 중...':'수정 저장 Ctrl+S'}</button></div>
       </main>
-      <aside className="properties"><div className="property-head"><b>식질 속성</b><button className="secondary kwt-add-layer" onClick={createLayer} disabled={!page?.editable} title="새 식질 박스 추가 (Ctrl+N)">+ 박스 추가</button></div>
+      <aside className="properties"><div className="property-head"><b>식질 속성</b><button className="secondary" type="button" disabled={!activeProject||activeProject.state!=='completed'||fontBulkBusy} onClick={()=>setFontBulkConfirm(true)} title="현재 ZIP의 모든 자동 식질 박스에 등록된 기본 폰트 적용">{fontBulkBusy?'적용 중…':'기본 폰트 일괄 적용'}</button><button className="secondary kwt-add-layer" onClick={createLayer} disabled={!page?.editable} title="새 식질 박스 추가 (Ctrl+N)">+ 박스 추가</button></div>
         {selectedLayer&&page?.editable?<AnimatePresence mode="wait"><motion.div key={selectedLayer.region_id} initial={{opacity:0,y:5}} animate={{opacity:1,y:0}} exit={{opacity:0}} className="properties-content scroll">
           <div className="region-title"><span title={selectedLayer.region_id}>{selectedLayer.region_id.startsWith('manual-')?'수동 생성 영역':`영역 #${selectedLayer.region_id}`}</span><span className="pill">{selectedLayer.edited?'수정됨':'자동 식질'}</span></div>
           <button className="secondary kwt-delete-layer" onClick={deleteLayer} title="선택한 식질 박스 삭제 (Delete)">선택 박스 삭제</button>
@@ -415,6 +477,22 @@ export default function App(){
     {section==='fonts'&&<FontManager onChanged={()=>void refreshFonts().catch(()=>{})}/>}
     {section!=='editor'&&section!=='extension'&&section!=='fonts'&&<ControlCenter section={section} status={engineStatus} onStatusRefresh={refreshEngineStatus}/>}
     </div></div>
+    {fontBulkConfirm&&<div className="kwt-bridge-restart-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setFontBulkConfirm(false)}}>
+      <div className="kwt-bridge-restart-dialog" role="dialog" aria-modal="true" aria-labelledby="kwt-font-bulk-title">
+        <h3 id="kwt-font-bulk-title">기본 폰트 일괄 적용</h3>
+        <p>현재 ZIP의 전체 페이지에서 자동 식질 박스의 폰트만 '{fontLibrary.fonts.find(f=>f.id===fontLibrary.default_id)?.name||'Windows 기본'}'으로 변경합니다.</p>
+        <p>텍스트·위치·크기·색상·수동 추가 박스는 유지합니다. 완료 ZIP과 편집 메타데이터에 저장됩니다. 페이지가 많으면 처리 시간이 걸릴 수 있습니다.</p>
+        <div className="kwt-bridge-restart-actions"><button type="button" onClick={()=>setFontBulkConfirm(false)}>취소</button><button type="button" className="primary" disabled={fontBulkBusy} onClick={()=>void applyDefaultFont()}>전체 페이지 적용</button></div>
+      </div>
+    </div>}
+    {bridgeRestartConfirm&&<div className="kwt-bridge-restart-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setBridgeRestartConfirm(false)}}>
+      <div className="kwt-bridge-restart-dialog" role="dialog" aria-modal="true" aria-labelledby="kwt-bridge-restart-title">
+        <h3 id="kwt-bridge-restart-title">Studio Bridge 재시작</h3>
+        <p>완료된 프로젝트 기록과 내부 작업 상태를 초기화하고 Bridge만 재시작합니다. OCR·Gemma 서버 및 디스크 파일은 유지됩니다.</p>
+        <p>현재 작업 중인 번역이 있다면 재시작할 수 없습니다. 저장되지 않은 식질 변경도 먼저 저장해야 합니다.</p>
+        <div className="kwt-bridge-restart-actions"><button type="button" onClick={()=>setBridgeRestartConfirm(false)}>취소</button><button type="button" className="primary" disabled={bridgeRestartBusy} onClick={()=>void restartBridge()}>Bridge 재시작</button></div>
+      </div>
+    </div>}
     <AnimatePresence>{message&&<motion.div className="toast" initial={{opacity:0,y:15}} animate={{opacity:1,y:0}} exit={{opacity:0,y:15}}><AlertCircle size={19}/><span>{message}</span><button onClick={()=>setMessage(null)}>닫기</button></motion.div>}</AnimatePresence>
   </div>
 }

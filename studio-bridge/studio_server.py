@@ -16,6 +16,7 @@ import shutil
 import hashlib
 import tempfile
 import threading
+import subprocess
 import traceback
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -39,6 +40,40 @@ projects = {}
 projects_lock = threading.RLock()
 queue_lock = threading.Lock()
 active_batch = False
+# KWT_BRIDGE_RESTART_V1_8_0
+bridge_restarting = False
+bridge_server = None
+
+def _restart_bridge_safely():
+    global bridge_restarting
+    # Check actual running projects rather than the stale active_batch flag.
+    # A stuck global flag is the very condition this operation must recover.
+    with queue_lock:
+        if bridge_restarting:
+            raise RuntimeError('Bridge is already restarting')
+        with projects_lock:
+            running = [p.source.name for p in projects.values()
+                       if p.state in ('running','finalizing')]
+        if running:
+            raise RuntimeError('자동 작업이 실제로 진행 중입니다. 완료 후 Bridge를 재시작하세요.')
+        bridge_restarting = True
+    try:
+        worker = Path(__file__).resolve().with_name('bridge_restart_worker.py')
+        if not worker.is_file():raise RuntimeError('Bridge restart worker is missing')
+        flags = (getattr(subprocess,'DETACHED_PROCESS',0) |
+                 getattr(subprocess,'CREATE_NEW_PROCESS_GROUP',0))
+        opts = {'creationflags':flags} if os.name=='nt' else {'start_new_session':True}
+        subprocess.Popen([sys.executable,str(worker),str(os.getpid()),str(PORT)],
+                         cwd=str(BASE),stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL,close_fds=True,**opts)
+        def close_after_reply():
+            time.sleep(.35)
+            if bridge_server is not None:bridge_server.shutdown()
+        threading.Thread(target=close_after_reply,name='kwt-bridge-restart',daemon=True).start()
+        return {'restarting':True,'old_pid':os.getpid()}
+    except Exception:
+        with queue_lock:bridge_restarting=False
+        raise
 
 
 def natural(name):
@@ -501,7 +536,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(403,{'error':'Studio request header required'})
                 if path=='/api/fonts':return self._send(200,kwt_list_fonts())
                 return self._send(404,{'error':'Unknown font API'})
-            if path=='/api/health': return self._send(200, {'ok': True, 'engine': str(TRANS), 'projects': len(projects)})
+            if path=='/api/health': return self._send(200, {'ok': True, 'engine': str(TRANS), 'projects': len(projects), 'bridge_pid': os.getpid()})
             if path=='/api/projects':
                 with projects_lock: data=[p.status() for p in projects.values()]
                 return self._send(200,data)
@@ -540,6 +575,8 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get('X-KWT-Studio') != '1':
                 return self._send(403, {'error': 'Studio request header required'})
             path=urlparse(self.path).path
+            if path=='/api/bridge/restart':
+                return self._send(200,_restart_bridge_safely())
             if path=='/api/fonts/upload':
                 from urllib.parse import unquote
                 length=int(self.headers.get('Content-Length','0'))
@@ -550,6 +587,12 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('글꼴 파일명이 올바르지 않습니다.')
                 return self._send(200,kwt_register_font(name,self.rfile.read(length)))
             body=self._body()
+            # KWT_FONT_BULK_V1_9_0
+            if path=='/api/fonts/apply-default':
+                from font_bulk import apply_default_font
+                with queue_lock:
+                    if active_batch:raise RuntimeError('자동 작업 진행 중에는 폰트를 일괄 변경할 수 없습니다.')
+                return self._send(200,apply_default_font(projects[body['id']]))
             if path=='/api/fonts/default':return self._send(200,kwt_font_default(str(body.get('id',''))))
             if path=='/api/fonts/remove':return self._send(200,kwt_font_remove(str(body.get('id',''))))
             if path=='/api/fonts/import-paths':return self._send(200,kwt_import_fonts(body.get('paths')))
@@ -604,4 +647,6 @@ class Handler(BaseHTTPRequestHandler):
 if __name__=='__main__':
     print('[KWT STUDIO] http://127.0.0.1:%d (loopback only)' % PORT, flush=True)
     print('[KWT STUDIO] Python:',sys.executable, flush=True)
-    ThreadingHTTPServer(('127.0.0.1',PORT),Handler).serve_forever()
+    bridge_server = ThreadingHTTPServer(('127.0.0.1',PORT),Handler)
+    try:bridge_server.serve_forever()
+    finally:bridge_server.server_close()

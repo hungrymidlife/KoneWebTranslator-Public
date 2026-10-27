@@ -299,3 +299,19 @@ canvas,
   outline: 2px solid #77c9f3;
   outline-offset: 2px;
 }
+/* KWT_BRIDGE_RESTART_V1_8_0 */
+.kwt-bridge-restart-backdrop{position:fixed;inset:0;z-index:200000;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;padding:22px}
+.kwt-bridge-restart-dialog{width:min(460px,100%);background:#1b2635;color:#ecf3f9;border:1px solid #50657c;border-radius:12px;padding:23px;box-shadow:0 25px 80px #0009}
+.kwt-bridge-restart-dialog h3{margin:0 0 13px;font-size:18px}
+.kwt-bridge-restart-dialog p{font-size:13px;line-height:1.7;color:#afc3d7;margin:0 0 12px}
+.kwt-bridge-restart-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:17px}
+.kwt-bridge-restart-actions button{padding:8px 14px;border-radius:7px}
+
+
+/* KWT_FOCUS_TOOLBAR_V1_9_1: group focus mode with view modes; no vertical text wrapping. */
+.document-toolbar .doc-label { flex: 1 1 160px; min-width: 0; }
+.document-toolbar .page-nav { flex: 0 0 auto; }
+.document-toolbar .toolbar-actions { flex: 0 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.document-toolbar .view-switch { flex: 0 0 auto; }
+.document-toolbar .view-switch button { flex: 0 0 auto; white-space: nowrap; word-break: keep-all; }
+.document-toolbar .view-switch .kwt-focus-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 122px; white-space: nowrap; word-break: keep-all; border-left: 1px solid #3c485b; }
