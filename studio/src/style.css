@@ -378,3 +378,27 @@ canvas,
 .kwt-tree-warning{border-left:3px solid #c99b51;background:#382d2433;padding:10px;color:#e1bb89;font-size:12px}
 .kwt-tree-prompt textarea{resize:vertical;min-height:150px}
 @media(max-width:650px){.kwt-tree-group>summary{align-items:flex-start;flex-wrap:wrap}.kwt-tree-group>summary small{margin-left:20px}}
+
+/* KWT_UNIFIED_NAV_TREE_V1_1: real tree is in the LEFT Studio navigation. */
+.studio-nav.kwt-nav-settings-open{width:240px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin}
+.kwt-settings-nav-node{display:flex;flex-direction:column;flex-shrink:0;min-width:0}
+.kwt-settings-nav-node>.studio-nav-item{width:100%;justify-content:flex-start}
+.kwt-settings-parent-caret{margin-left:auto;flex-shrink:0;color:#8abde0;transition:transform .14s}
+.kwt-settings-parent-caret.open{transform:rotate(90deg)}
+.kwt-settings-subtree{position:relative;display:flex;flex-direction:column;gap:3px;padding:5px 0 9px 17px;margin-left:20px;border-left:1px solid #38516a}
+.kwt-settings-subitem{width:100%;display:flex;align-items:center;gap:9px;text-align:left;border:0;border-radius:7px;background:transparent;color:#9bafc5;font-size:11.5px;line-height:1.4;padding:10px 7px 10px 12px;white-space:normal;cursor:pointer}
+.kwt-settings-subitem::before{content:'';flex-shrink:0;width:5px;height:5px;border-radius:50%;background:#6987a5}
+.kwt-settings-subitem:hover{background:#233246;color:#f2f8ff}
+.kwt-settings-subitem.active{color:#e4f5ff;background:#25455f;font-weight:670}
+.kwt-settings-subitem.active::before{background:#6ed0ff}
+.kwt-settings-page{max-width:1080px}
+.kwt-settings-page-intro{padding-top:19px;padding-bottom:17px}
+.kwt-settings-breadcrumb{margin:0 0 14px;color:#91b9d2;font-size:11px}
+.kwt-settings-page .kwt-tree-fields{margin-top:5px}
+@media(max-width:1100px){
+  .studio-nav.kwt-nav-settings-open{width:225px}
+  .studio-nav.kwt-nav-settings-open .studio-nav-item{justify-content:flex-start;padding:10px 8px}
+  .studio-nav.kwt-nav-settings-open .studio-nav-item span{display:inline}
+  .studio-nav.kwt-nav-settings-open .nav-toggle{justify-content:flex-start;padding:10px 8px}
+  .studio-nav.kwt-nav-settings-open .nav-toggle span{display:inline}
+}

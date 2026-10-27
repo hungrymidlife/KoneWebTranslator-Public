@@ -3,6 +3,7 @@ import {motion,AnimatePresence} from 'motion/react'
 import {FolderOpen,Play,ChevronLeft,ChevronRight,Save,Layers3,Eye,EyeOff,RefreshCw,Check,AlertCircle,Maximize2,PanelLeftClose,PanelLeftOpen,Search,Clock,Image as ImageIcon,Puzzle} from 'lucide-react'
 import EditorCanvas from './EditorCanvas'
 import ControlCenter,{StatusDots,useEngineStatus,type StudioSection} from './ControlCenter'
+import type {SettingsGroup} from './UnifiedSettingsTree' // KWT_UNIFIED_NAV_TREE_V1_1
 import ExtensionCenter from './ExtensionCenter'
 import FontManager from './FontManager'
 import SetupCenter from './SetupCenter'
@@ -103,6 +104,14 @@ export default function App(){
   const [connected,setConnected]=useState(false)
   const [section,setSection]=useState<StudioSection>(()=>strPref('section','editor') as StudioSection)
   const [navExpanded,setNavExpanded]=useState(()=>boolPref('navExpanded',true))
+  // KWT_UNIFIED_NAV_TREE_V1_1: left navigation tree state (UI-only preferences).
+  const [settingsGroup,setSettingsGroup]=useState<SettingsGroup>(()=>{
+    const stored=strPref('settingsGroup','overview')
+    return (['overview','gemma','pipeline','ocr','translation','chat','typesetting'] as string[]).includes(stored)
+      ? stored as SettingsGroup : 'overview'
+  })
+  const [settingsTreeOpen,setSettingsTreeOpen]=useState(()=>boolPref('settingsTreeOpen',true))
+  useEffect(()=>persistPrefs({settingsGroup,settingsTreeOpen}),[settingsGroup,settingsTreeOpen])
   const {status:engineStatus,refresh:refreshEngineStatus}=useEngineStatus()
   const [root,setRoot]=useState(()=>strPref('root',''))
   const [output,setOutput]=useState(()=>strPref('output',''))
@@ -434,7 +443,7 @@ export default function App(){
       <div className="top-actions"><StatusDots status={engineStatus}/><span className={'connection '+(connected?'online':'offline')}><i/>{connected?'로컬 브리지 연결됨':'브리지 연결 필요'}</span><button className="flat" disabled={bridgeRestartBusy} onClick={()=>setBridgeRestartConfirm(true)} title="Studio Bridge 재시작 (작업 상태 초기화)" aria-label="Studio Bridge 재시작"><RefreshCw size={17}/></button><button className="flat" title="전체 화면(F11)" onClick={()=>void import('@tauri-apps/api/window').then(async m=>{const w=m.getCurrentWindow();await w.setFullscreen(!(await w.isFullscreen()))}).catch(()=>{})}><Maximize2 size={16}/></button></div>
     </header>
     <div className="unified-body">
-      <nav className={'studio-nav '+(navExpanded?'expanded':'compact')} aria-label="Studio 화면 선택">
+      <nav className={'studio-nav '+(navExpanded?'expanded':'compact')+(section==='settings'&&navExpanded&&settingsTreeOpen?' kwt-nav-settings-open':'')} aria-label="Studio 화면 선택">
         <button className="nav-toggle" onClick={()=>setNavExpanded(v=>!v)} title="메뉴 펼치기/접기"><Menu size={19}/>{navExpanded&&<span>메뉴</span>}</button>
         {([
           ['editor','번역 · 검수 · 편집',LayoutDashboard],
@@ -447,7 +456,25 @@ export default function App(){
           ['extension','웹 확장앱 관리',Puzzle],
           ['logs','로그 · 진단',Terminal],
           ['settings','환경 설정',Settings2],
-        ] as const).map(([key,label,Icon])=><button key={key} title={label} className={'studio-nav-item '+(section===key?'active':'')} onClick={()=>setSection(key)}><Icon size={18}/>{navExpanded&&<span>{label}</span>}</button>)}
+        ] as const).map(([key,label,Icon])=>key==='settings'
+          ? <div key={key} className="kwt-settings-nav-node">
+              <button type="button" title="환경 설정 트리 열기/닫기" aria-expanded={section==='settings'&&navExpanded&&settingsTreeOpen} className={'studio-nav-item '+(section==='settings'?'active':'')} onClick={()=>{
+                const alreadyOpen=section==='settings'&&navExpanded&&settingsTreeOpen
+                setSection('settings');setNavExpanded(true);setSettingsTreeOpen(!alreadyOpen)
+              }}><Icon size={18}/>{navExpanded&&<span>{label}</span>}{navExpanded&&<ChevronRight size={14} className={'kwt-settings-parent-caret'+(section==='settings'&&settingsTreeOpen?' open':'')}/>}</button>
+              {section==='settings'&&navExpanded&&settingsTreeOpen&&<div className="kwt-settings-subtree" role="group" aria-label="환경 설정 하위 메뉴">
+                {([
+                  ['overview','설정 개요'],
+                  ['gemma','AI 서버 실행'],
+                  ['pipeline','자동 ZIP 처리'],
+                  ['ocr','OCR / 텍스트 검출'],
+                  ['translation','번역 설정'],
+                  ['chat','로컬 채팅 / 기억'],
+                  ['typesetting','이미지 처리 / 식질'],
+                ] as const).map(([group,title])=><button type="button" key={group} className={'kwt-settings-subitem'+(settingsGroup===group?' active':'')} aria-current={settingsGroup===group?'page':undefined} onClick={()=>setSettingsGroup(group)}>{title}</button>)}
+              </div>}
+            </div>
+          : <button key={key} title={label} className={'studio-nav-item '+(section===key?'active':'')} onClick={()=>setSection(key)}><Icon size={18}/>{navExpanded&&<span>{label}</span>}</button>)}
         <div className="nav-spacer"/><div className="nav-version">{navExpanded?'STUDIO v0.2':'v0.2'}</div>
       </nav>
       <div className="unified-content">
@@ -518,7 +545,7 @@ export default function App(){
     {section==='extension'&&<ExtensionCenter/>}
     {section==='fonts'&&<FontManager onChanged={()=>void refreshFonts().catch(()=>{})}/>}
     {/* KWT_CHROME_EXTENSION_GUIDE_V2_0_2 */}{section==='installer'&&<SetupCenter onOpenExtension={()=>setSection('extension')}/>}
-    {section!=='editor'&&section!=='extension'&&section!=='fonts'&&section!=='installer'&&section!=='chat'&&<ControlCenter section={section} status={engineStatus} onStatusRefresh={refreshEngineStatus}/>}
+    {section!=='editor'&&section!=='extension'&&section!=='fonts'&&section!=='installer'&&section!=='chat'&&<ControlCenter section={section} settingsGroup={settingsGroup} status={engineStatus} onStatusRefresh={refreshEngineStatus}/>}
     </div></div>
     {fontBulkConfirm&&<div className="kwt-bridge-restart-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setFontBulkConfirm(false)}}>
       <div className="kwt-bridge-restart-dialog" role="dialog" aria-modal="true" aria-labelledby="kwt-font-bulk-title">
