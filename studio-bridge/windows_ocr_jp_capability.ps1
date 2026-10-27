@@ -2,7 +2,7 @@
     [ValidateSet('test','install')][string]$Action = 'test',
     [string]$LogPath = ''
 )
-# KWT_WINOCR_LANG_ELEVATED_DIAGNOSTICS_PUBLIC_V207
+# KWT_WINOCR_LANG_LANGUAGE_TAG_FIX_PUBLIC_V208
 # Save with UTF-8 BOM for Windows PowerShell 5.1 Korean strings.
 $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch {}
@@ -27,7 +27,7 @@ function WinRt-State {
         $langs = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType=WindowsRuntime]::AvailableRecognizerLanguages
         if ($null -eq $langs) { return 'unknown' }
         foreach ($lang in $langs) {
-            if ($lang.LanguageTag -ieq 'ja-JP') { return 'available' }
+            if ([string]$lang.LanguageTag -match '^ja(?:-|$)') { return 'available' }
         }
         return 'missing'
     } catch {
@@ -83,7 +83,7 @@ try {
             $quick = WinRt-State
             Emit ('[STATE] 일반 권한 WinRT 일본어 OCR: ' + $quick)
             if ($quick -eq 'available') {
-                Emit '[OK] Windows OCR WinRT 일본어(ja-JP) 인식 언어 사용 가능'
+                Emit '[OK] Windows OCR WinRT 일본어(ja 또는 ja-JP) 인식 언어 사용 가능'
                 exit 0
             }
             Emit '[INFO] WinRT 검사만으로는 설치 실패를 확정할 수 없어 관리자 권한으로 Windows 기능 상태를 조회합니다.'
