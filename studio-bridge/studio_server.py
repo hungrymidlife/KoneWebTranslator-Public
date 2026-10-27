@@ -102,6 +102,10 @@ def _normalize_edit(edit, size):
     return result
 
 
+# KWT_STUDIO_LAYER_CRUD_BACKEND_V1_6_1: stable manual layer IDs, independent from OCR IDs.
+MANUAL_LAYER_ID = re.compile(r'^manual-[a-z0-9_-]{8,80}$')
+
+
 class Project:
     def __init__(self, source, output=None):
         source = Path(source).resolve()
@@ -162,8 +166,23 @@ class Project:
                      'stroke_color': typ.get('stroke_color') or '#ffffff',
                      'stroke_width': typ.get('stroke_width', 2), 'align': 'left', 'visible': True,
                      'edited': rid in saved}
+            if saved.get(rid, {}).get('deleted'):
+                continue
             layer.update(saved.get(rid, {}))
             layers.append(layer)
+        # Extra manually created text regions have no OCR reference region.
+        for rid, edit in saved.items():
+            if not MANUAL_LAYER_ID.fullmatch(str(rid)) or not isinstance(edit, dict) or edit.get('deleted'):
+                continue
+            bbox = list(edit.get('bbox', [80, 80, 220, 120]))
+            layers.append({'region_id': rid, 'ocr_bbox': list(bbox), 'bbox': bbox,
+                           'text': str(edit.get('text', '')), 'source_text': '',
+                           'font_size': edit.get('font_size', 24),
+                           'text_color': edit.get('text_color', '#000000'),
+                           'stroke_color': edit.get('stroke_color', '#ffffff'),
+                           'stroke_width': edit.get('stroke_width', 2),
+                           'align': edit.get('align', 'left'), 'visible': edit.get('visible', True),
+                           'edited': True})
         can_edit = self.background_path(name, record).is_file()
         return {'name': name, 'index': index, 'total': self.total, 'record': record,
                 'layers': layers, 'ocr': [r.get('bbox') for r in record.get('regions', []) if r.get('bbox')],
@@ -258,6 +277,8 @@ class Project:
             if typ.get('status') not in ('drawn', 'manual'):
                 continue
             if rid in edits:
+                if edits[rid].get('deleted'):
+                    continue
                 self._manual_draw(painter, _normalize_edit(edits[rid], image.size))
                 continue
             text = str(region.get('translated_text') or typ.get('text') or '')
@@ -268,6 +289,10 @@ class Project:
                      'stroke_color': typ.get('stroke_color') or '#ffffff'}
             # Matches existing automatic text layout implementation.
             layout_and_draw(painter, text, bounds, self._font, style)
+        # Draw user-created text boxes after automatic boxes.
+        for rid, edit in edits.items():
+            if MANUAL_LAYER_ID.fullmatch(str(rid)) and isinstance(edit, dict) and not edit.get('deleted'):
+                self._manual_draw(painter, _normalize_edit(edit, image.size))
         return image
 
     def _replace_zip_page(self, name, raw):
@@ -314,11 +339,25 @@ class Project:
                 raise FileNotFoundError('복원 배경 파일이 없습니다. .layers 폴더를 확인하세요.')
             with Image.open(p) as im: size = im.size
             allowed = {str(t.get('region_id')) for t in record.get('typesetting', []) if t.get('status') in ('drawn','manual')}
+            if not isinstance(incoming, list) or len(incoming) > 500:
+                raise ValueError('한 번에 저장할 수 있는 식질 변경은 최대 500개입니다.')
             updated = dict(self.edits.get(name, {}))
             for edit in incoming:
-                rid = str(edit.get('region_id'))
-                if rid not in allowed: raise ValueError('존재하지 않는 식질 영역: '+rid)
+                if not isinstance(edit, dict):
+                    raise ValueError('식질 편집 데이터가 올바르지 않습니다.')
+                rid = str(edit.get('region_id', ''))
+                is_manual = bool(MANUAL_LAYER_ID.fullmatch(rid))
+                if rid not in allowed and not is_manual:
+                    raise ValueError('존재하지 않는 식질 영역: '+rid)
+                if edit.get('deleted') is True:
+                    if is_manual:
+                        updated.pop(rid, None)
+                    else:
+                        updated[rid] = {'deleted': True}
+                    continue
                 updated[rid] = _normalize_edit(edit, size)
+            if len(updated) > 1500:
+                raise ValueError('이 페이지의 편집 레이어가 너무 많습니다.')
             # Check rendered result before modifying any files.
             preview = self.render_image(name, updated)
             del preview

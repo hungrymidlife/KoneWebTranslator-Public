@@ -408,7 +408,7 @@ service=ManagerService()
 # KWT_GUI_LIFECYCLE_V1_4_0
 # Only Studio-owned AI processes are stopped. External servers are never targeted.
 _GUI_SESSION_TIMEOUT = 45.0
-_GUI_CLOSE_GRACE = 6.0
+_GUI_CLOSE_GRACE = 2.0
 
 
 def _kwt_stop_owned_after_gui_close(manager):
@@ -453,6 +453,19 @@ class _KwtGuiSessions:
             if self.armed and not self.sessions and self.empty_since is None:
                 self.empty_since = time.monotonic()
         return {'ok': True}
+
+    def desktop_exit(self):
+        # KWT_EDITOR_FOCUS_SHUTDOWN_V1_5_1
+        # Called by the desktop BAT after Tauri exits (native close fallback).
+        # Never remove web GUI sessions; do not stop externally-owned AI servers.
+        with self.lock:
+            self.armed = True
+            self.sessions = {key:ts for key,ts in self.sessions.items()
+                             if not key.startswith('desktop-')}
+            self.generation += 1
+            if not self.sessions:
+                self.empty_since = time.monotonic() - _GUI_CLOSE_GRACE
+        return {'ok':True,'remaining_sessions':len(self.sessions)}
 
     def _watchdog(self):
         while True:
@@ -508,6 +521,7 @@ def handle_post(path,body):
         sid=body.get('session_id')
         if action=='touch':return _kwt_gui_sessions.touch(sid)
         if action=='close':return _kwt_gui_sessions.close(sid)
+        if action=='desktop-exit':return _kwt_gui_sessions.desktop_exit()
         raise ValueError('Invalid GUI session action')
     if path=='/api/manager/log-policy':return _log_change(body)
     if path=='/api/manager/clear-logs':return _log_clear()

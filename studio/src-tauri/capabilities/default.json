@@ -2,5 +2,5 @@
   "identifier": "default",
   "description": "Local Studio window and folder picker",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default"]
+  "permissions": ["core:default", "dialog:default", "core:window:allow-destroy"]
 }
