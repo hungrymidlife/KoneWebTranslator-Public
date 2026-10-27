@@ -105,12 +105,18 @@ def _estimate(text: str) -> int:
     return int(asian * 1.8 + other / 2.7 + 10)
 
 
-def _request(messages: list, max_tokens: int, temperature: float) -> str:
+def _request(messages: list, max_tokens: int, temperature: float) -> tuple[str, str, int]:
+    """Return visible answer, finish reason and generated token count.
+
+    A llama.cpp length finish MUST NOT be silently treated as a completed answer.
+    Disable optional Gemma 4 thinking for chat so its hidden reasoning does not
+    consume the already-small reply budget (server/template support varies).
+    """
     payload = {'model': MODEL, 'messages': messages, 'stream': False,
-               'max_tokens': max_tokens, 'temperature': temperature}
+               'max_tokens': max_tokens, 'temperature': temperature,
+               'chat_template_kwargs': {'enable_thinking': False}}
     req = urllib.request.Request(API, data=json.dumps(payload, ensure_ascii=False).encode('utf-8'),
                                  headers={'Content-Type': 'application/json'}, method='POST')
-    # Prevent HTTP_PROXY/HTTPS_PROXY from intercepting local prompts.
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
         with opener.open(req, timeout=300) as response:
@@ -121,14 +127,94 @@ def _request(messages: list, max_tokens: int, temperature: float) -> str:
     except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
         raise RuntimeError('Gemma 서버에 연결할 수 없습니다. AI 서버 관리에서 실행 상태를 확인하세요. (%s)' % exc) from exc
     try:
-        content = data['choices'][0]['message']['content']
+        choice = data['choices'][0]
+        content = choice['message']['content']
         if isinstance(content, list):
             content = ''.join(str(p.get('text', '')) for p in content if isinstance(p, dict))
         if not isinstance(content, str) or not content.strip():
             raise ValueError('empty response')
-        return content.strip()
+        finish = str(choice.get('finish_reason') or 'unknown')
+        usage = data.get('usage') or {}
+        tokens = int(usage.get('completion_tokens') or 0)
+        return content.strip(), finish, tokens
     except (KeyError, IndexError, TypeError, ValueError) as exc:
         raise RuntimeError('Gemma 응답이 비어 있거나 예상 형식이 아닙니다.') from exc
+
+
+def _join_continuation(previous: str, continuation: str) -> str:
+    """Avoid duplicating a repeated suffix/prefix when continuing a cut-off answer."""
+    continuation = continuation.lstrip('\n')
+    overlap = 0
+    for n in range(min(250, len(previous), len(continuation)), 7, -1):
+        if previous.endswith(continuation[:n]):
+            overlap = n
+            break
+    return previous + continuation[overlap:]
+
+
+def _output_limit(messages: list, item: dict) -> int:
+    """Resolve 0 (auto) to a positive, context-bounded llama.cpp token cap.
+
+    Do not send max_tokens=0: API servers differ on its interpretation.
+    Auto mode lets the model stop naturally, or stops at the remaining -c budget.
+    Estimates are intentionally conservative, but are not exact tokenization.
+    """
+    selected = int(item['reply_tokens'])
+    if selected > 0:
+        return selected
+    context = int(item['context_tokens'])
+    prompt_estimate = sum(_estimate(m['content']) for m in messages)
+    available = context - prompt_estimate - 512  # chat template + estimate margin
+    if available < 128:
+        raise ValueError('자동 답변에 남은 컨텍스트가 부족합니다. 입력을 줄이거나 -c를 늘려 주세요.')
+    return available
+
+
+def _generate_complete(prompt: list, item: dict) -> tuple[str, dict]:
+    """Continue only on length stops, with at most three bounded server calls."""
+    selected = int(item['reply_tokens'])
+    temperature = float(item['temperature'])
+    context = int(item['context_tokens'])
+    answer = ''
+    total_tokens = 0
+    reason = 'unknown'
+    segments = 0
+    for index in range(3):
+        if index == 0:
+            messages = prompt
+        else:
+            # Keep the newest user question and a short answer tail so the
+            # follow-up has room to generate, even in 0 (auto) mode.
+            system = prompt[0]
+            latest = prompt[-1]
+            followup = {'role': 'user', 'content':
+                        '방금 답변이 길이 제한으로 중단되었습니다. 이미 쓴 내용은 반복하지 말고, '
+                        '끊긴 문장부터 자연스럽게 이어서 답변을 마무리해 주세요.'}
+            base = sum(_estimate(m['content']) for m in (system, latest, followup))
+            reserve = selected if selected > 0 else max(1024, context // 4)
+            allowance = context - reserve - 450 - base
+            if allowance < 250:
+                reason = 'length'
+                break
+            tail = answer[-min(len(answer), max(180, int(allowance / 2.0))):]
+            while len(tail) > 150 and _estimate(tail) > allowance:
+                tail = tail[len(tail)//5:]
+            messages = [system, latest, {'role': 'assistant', 'content': tail}, followup]
+        try:
+            limit = _output_limit(messages, item)
+            part, reason, tokens = _request(messages, limit, temperature)
+        except Exception:
+            if not answer:
+                raise
+            reason = 'continuation_error'
+            break
+        segments += 1
+        total_tokens += tokens
+        answer = _join_continuation(answer, part) if answer else part
+        if reason != 'length':
+            break
+    return answer, {'finish_reason': reason, 'completion_tokens': total_tokens,
+                    'segments': segments, 'truncated': reason in ('length', 'continuation_error')}
 
 
 def _summarize(previous: str, messages: list) -> str:
@@ -154,7 +240,10 @@ def _summarize(previous: str, messages: list) -> str:
                   '추측으로 내용을 만들지 마. 대화 상대에게 답하지 말고 기억 요약만 출력해. '
                   '최대 450 한국어 글자 정도로 정리해.\n\n'
                   '기존 기억:\n' + summary[:2000] + '\n\n추가 대화:\n' + chunk)
-        summary = _request([{'role': 'user', 'content': prompt}], 400, 0.15)[:2200]
+        summary_text, summary_finish, _ = _request([{'role': 'user', 'content': prompt}], 700, 0.15)
+        if summary_finish == 'length':
+            raise RuntimeError('대화 기억 요약이 출력 한도로 중단됐습니다. 답변 길이를 늘려 다시 시도하세요.')
+        summary = summary_text[:2200]
     return summary
 
 
@@ -163,8 +252,10 @@ def _messages_for(item: dict, pending: dict) -> list:
     cursor = max(0, min(int(item.get('summary_through', 0)), len(item['messages'])))
     context = int(item['context_tokens'])
     response = int(item['reply_tokens'])
-    # Reserve tokens for chat formatting and the requested answer.
-    budget = context - response - 400
+    # 0 = auto: reserve a useful response window while keeping older messages
+    # in rolling memory. The actual per-call limit uses all remaining context.
+    reserve = response if response > 0 else max(1024, min(4096, context // 2))
+    budget = context - reserve - 400
     if budget < 650:
         raise ValueError('컨텍스트 설정이 답변 길이에 비해 너무 작습니다.')
 
@@ -206,7 +297,7 @@ def post(path: str, body: dict) -> object:
         now = time.time()
         item = {'id': uuid.uuid4().hex, 'title': '새 대화', 'created': now, 'updated': now,
                 'system_prompt': DEFAULT_SYSTEM, 'context_tokens': 4096,
-                'reply_tokens': 768, 'temperature': 0.65,
+                'reply_tokens': 0, 'temperature': 0.65,
                 'summary': '', 'summary_through': 0, 'messages': []}
         _save(item)
         return _public(item)
@@ -225,8 +316,8 @@ def post(path: str, body: dict) -> object:
                 raise ValueError('시스템 프롬프트는 1~3000자여야 합니다.')
             if context not in (4096, 8192, 16384, 32768):
                 raise ValueError('지원하지 않는 컨텍스트 설정입니다.')
-            if not 128 <= reply <= min(2048, context - 1024):
-                raise ValueError('답변 길이는 128~2048 토큰이어야 합니다.')
+            if reply != 0 and not 128 <= reply <= context - 1024:
+                raise ValueError(f'답변 길이는 0(자동) 또는 128~{context - 1024} 토큰이어야 합니다.')
             if not 0 <= temperature <= 2:
                 raise ValueError('temperature 범위는 0~2입니다.')
             item.update(system_prompt=prompt, context_tokens=context,
@@ -243,8 +334,9 @@ def post(path: str, body: dict) -> object:
             try:
                 pending = {'role': 'user', 'content': text}
                 prompt = _messages_for(item, pending)
-                answer = _request(prompt, int(item['reply_tokens']), float(item['temperature']))
-                item['messages'].extend([pending, {'role': 'assistant', 'content': answer}])
+                answer, generation = _generate_complete(prompt, item)
+                item['messages'].extend([pending, {'role': 'assistant', 'content': answer,
+                                                  'generation': generation}])
                 if item['title'] == '새 대화':
                     item['title'] = text[:32].replace('\n', ' ')
                 item['updated'] = time.time()
