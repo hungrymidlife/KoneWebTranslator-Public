@@ -27,6 +27,11 @@ DEFAULTS = {
     'ocr': {'pad_x_percent': 12.0, 'pad_y_percent': 8.0},
     'translation': {'max_region_count': 20, 'max_source_chars': 1200, 'timeout_sec': 120,
                     'top_k': 64, 'top_p': 0.9, 'min_p': 0.05},
+    # KWT_UNIFIED_CHAT_V1_4: shared controls; per-conversation options remain in chat records.
+    'chat': {'context_reserve': 400, 'auto_reply_margin': 512, 'summary_batch_messages': 4,
+             'summary_chunk_budget': 1150, 'summary_output_tokens': 700,
+             'summary_max_chars': 2200, 'summary_previous_chars': 2000,
+             'timeout_sec': 300, 'continue_limit': 3},
 }
 
 INTEGER_RULES = {
@@ -43,6 +48,15 @@ INTEGER_RULES = {
     ('translation', 'max_source_chars'): (100, 1200),
     ('translation', 'timeout_sec'): (30, 600),
     ('translation', 'top_k'): (0, 200),
+    ('chat', 'context_reserve'): (200, 1500),
+    ('chat', 'auto_reply_margin'): (256, 2048),
+    ('chat', 'summary_batch_messages'): (1, 10),
+    ('chat', 'summary_chunk_budget'): (500, 2500),
+    ('chat', 'summary_output_tokens'): (256, 1600),
+    ('chat', 'summary_max_chars'): (500, 8000),
+    ('chat', 'summary_previous_chars'): (500, 6000),
+    ('chat', 'timeout_sec'): (30, 900),
+    ('chat', 'continue_limit'): (1, 6),
 }
 FLOAT_RULES = {
     ('gemma', 'top_p'): (0.01, 1.0),
@@ -81,13 +95,13 @@ def normalize(value):
     if set(value) - set(DEFAULTS) or old_groups - set(value):
         raise ValueError('통합 설정 상위 필드가 누락되었거나 알 수 없는 필드가 있습니다.')
     result = copy.deepcopy(DEFAULTS)
-    for section in ('gemma', 'pipeline', 'ocr', 'translation'):
+    for section in ('gemma', 'pipeline', 'ocr', 'translation', 'chat'):  # KWT_UNIFIED_CHAT_V1_4
         data = value.get(section, {})
         if not isinstance(data, dict):
             raise ValueError(f'{section} 설정이 유효하지 않습니다.')
         missing = set(DEFAULTS[section]) - set(data)
         legacy_keys = ({'ocr_workers','translation_workers','zip_workers'} if section == 'pipeline'
-                       else set(DEFAULTS[section]) if section in ('ocr','translation') else set())
+                       else set(DEFAULTS[section]) if section in ('ocr','translation','chat') else set())
         if set(data) - set(DEFAULTS[section]) or missing - legacy_keys:
             raise ValueError(f'{section} 설정 항목이 누락되었거나 알 수 없는 항목이 있습니다.')
         for key, item in data.items():

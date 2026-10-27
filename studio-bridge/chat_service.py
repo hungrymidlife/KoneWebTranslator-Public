@@ -22,6 +22,39 @@ API = 'http://127.0.0.1:18080/v1/chat/completions'
 MODEL = 'gemma4-12b-local'
 ID_RE = re.compile(r'^[a-f0-9]{32}$')
 DEFAULT_SYSTEM = '너는 친절하고 정확한 한국어 AI 도우미다. 불확실한 내용은 확실한 사실과 구별해 설명한다.'
+
+# KWT_UNIFIED_CHAT_V1_4: snapshot common memory policy at the start of each message.
+_CHAT_DEFAULTS = {
+    'context_reserve': 400, 'auto_reply_margin': 512, 'summary_batch_messages': 4,
+    'summary_chunk_budget': 1150, 'summary_output_tokens': 700,
+    'summary_max_chars': 2200, 'summary_previous_chars': 2000,
+    'timeout_sec': 300, 'continue_limit': 3,
+}
+_CHAT_LIMITS = {
+    'context_reserve': (200, 1500), 'auto_reply_margin': (256, 2048),
+    'summary_batch_messages': (1, 10), 'summary_chunk_budget': (500, 2500),
+    'summary_output_tokens': (256, 1600), 'summary_max_chars': (500, 8000),
+    'summary_previous_chars': (500, 6000), 'timeout_sec': (30, 900),
+    'continue_limit': (1, 6),
+}
+def _kwt_chat_runtime():
+    config_path = ROOT / 'runtime_settings.json'
+    values = dict(_CHAT_DEFAULTS)
+    if not config_path.is_file():
+        return values
+    data = json.loads(config_path.read_text(encoding='utf-8-sig'))
+    if not isinstance(data, dict) or data.get('schema_version') != 1:
+        raise ValueError('채팅 통합 설정 파일의 버전이 올바르지 않습니다.')
+    group = data.get('chat', {})
+    if not isinstance(group, dict) or set(group) - set(_CHAT_DEFAULTS):
+        raise ValueError('채팅 통합 설정 필드가 올바르지 않습니다.')
+    for key, val in group.items():
+        lo, hi = _CHAT_LIMITS[key]
+        if type(val) is not int or not lo <= val <= hi:
+            raise ValueError('채팅 설정값 범위 오류: ' + key)
+        values[key] = val
+    return values
+
 _LOCKS_GUARD = threading.RLock()
 _LOCKS: dict[str, threading.RLock] = {}
 _BUSY = 0
@@ -105,7 +138,7 @@ def _estimate(text: str) -> int:
     return int(asian * 1.8 + other / 2.7 + 10)
 
 
-def _request(messages: list, max_tokens: int, temperature: float) -> tuple[str, str, int]:
+def _request(messages: list, max_tokens: int, temperature: float, timeout: int = 300) -> tuple[str, str, int]:
     """Return visible answer, finish reason and generated token count.
 
     A llama.cpp length finish MUST NOT be silently treated as a completed answer.
@@ -119,7 +152,7 @@ def _request(messages: list, max_tokens: int, temperature: float) -> tuple[str, 
                                  headers={'Content-Type': 'application/json'}, method='POST')
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        with opener.open(req, timeout=300) as response:
+        with opener.open(req, timeout=timeout) as response:
             data = json.load(response)
     except urllib.error.HTTPError as exc:
         detail = exc.read(1400).decode('utf-8', 'replace')
@@ -152,7 +185,7 @@ def _join_continuation(previous: str, continuation: str) -> str:
     return previous + continuation[overlap:]
 
 
-def _output_limit(messages: list, item: dict) -> int:
+def _output_limit(messages: list, item: dict, chat_cfg=None) -> int:
     """Resolve 0 (auto) to a positive, context-bounded llama.cpp token cap.
 
     Do not send max_tokens=0: API servers differ on its interpretation.
@@ -164,14 +197,15 @@ def _output_limit(messages: list, item: dict) -> int:
         return selected
     context = int(item['context_tokens'])
     prompt_estimate = sum(_estimate(m['content']) for m in messages)
-    available = context - prompt_estimate - 512  # chat template + estimate margin
+    available = context - prompt_estimate - (chat_cfg or _CHAT_DEFAULTS)['auto_reply_margin']  # estimated
     if available < 128:
         raise ValueError('자동 답변에 남은 컨텍스트가 부족합니다. 입력을 줄이거나 -c를 늘려 주세요.')
     return available
 
 
-def _generate_complete(prompt: list, item: dict) -> tuple[str, dict]:
-    """Continue only on length stops, with at most three bounded server calls."""
+def _generate_complete(prompt: list, item: dict, chat_cfg=None) -> tuple[str, dict]:
+    """Continue on length stops, bounded by configured server call count."""
+    chat_cfg = chat_cfg or _CHAT_DEFAULTS
     selected = int(item['reply_tokens'])
     temperature = float(item['temperature'])
     context = int(item['context_tokens'])
@@ -179,7 +213,7 @@ def _generate_complete(prompt: list, item: dict) -> tuple[str, dict]:
     total_tokens = 0
     reason = 'unknown'
     segments = 0
-    for index in range(3):
+    for index in range(chat_cfg['continue_limit']):
         if index == 0:
             messages = prompt
         else:
@@ -192,7 +226,7 @@ def _generate_complete(prompt: list, item: dict) -> tuple[str, dict]:
                         '끊긴 문장부터 자연스럽게 이어서 답변을 마무리해 주세요.'}
             base = sum(_estimate(m['content']) for m in (system, latest, followup))
             reserve = selected if selected > 0 else max(1024, context // 4)
-            allowance = context - reserve - 450 - base
+            allowance = context - reserve - (chat_cfg['context_reserve'] + 50) - base
             if allowance < 250:
                 reason = 'length'
                 break
@@ -201,8 +235,8 @@ def _generate_complete(prompt: list, item: dict) -> tuple[str, dict]:
                 tail = tail[len(tail)//5:]
             messages = [system, latest, {'role': 'assistant', 'content': tail}, followup]
         try:
-            limit = _output_limit(messages, item)
-            part, reason, tokens = _request(messages, limit, temperature)
+            limit = _output_limit(messages, item, chat_cfg)
+            part, reason, tokens = _request(messages, limit, temperature, timeout=chat_cfg['timeout_sec'])
         except Exception:
             if not answer:
                 raise
@@ -217,7 +251,8 @@ def _generate_complete(prompt: list, item: dict) -> tuple[str, dict]:
                     'segments': segments, 'truncated': reason in ('length', 'continuation_error')}
 
 
-def _summarize(previous: str, messages: list) -> str:
+def _summarize(previous: str, messages: list, chat_cfg=None) -> str:
+    chat_cfg = chat_cfg or _CHAT_DEFAULTS
     # Summarize in bounded chunks, never discard the original transcript.
     summary = previous
     chunks = []
@@ -228,7 +263,7 @@ def _summarize(previous: str, messages: list) -> str:
         # Extremely long turns are broken into pieces to avoid context overflow.
         while content:
             piece, content = content[:1300], content[1300:]
-            if buffer and _estimate(buffer + piece) > 1150:
+            if buffer and _estimate(buffer + piece) > chat_cfg['summary_chunk_budget']:
                 chunks.append(buffer)
                 buffer = ''
             buffer += piece
@@ -239,15 +274,16 @@ def _summarize(previous: str, messages: list) -> str:
                   '인물·고유명사·사용자 선호·결정사항·진행 중 작업·중요한 수치를 우선 보존하고, '
                   '추측으로 내용을 만들지 마. 대화 상대에게 답하지 말고 기억 요약만 출력해. '
                   '최대 450 한국어 글자 정도로 정리해.\n\n'
-                  '기존 기억:\n' + summary[:2000] + '\n\n추가 대화:\n' + chunk)
-        summary_text, summary_finish, _ = _request([{'role': 'user', 'content': prompt}], 700, 0.15)
+                  '기존 기억:\n' + summary[:chat_cfg['summary_previous_chars']] + '\n\n추가 대화:\n' + chunk)
+        summary_text, summary_finish, _ = _request([{'role': 'user', 'content': prompt}], chat_cfg['summary_output_tokens'], 0.15, timeout=chat_cfg['timeout_sec'])
         if summary_finish == 'length':
             raise RuntimeError('대화 기억 요약이 출력 한도로 중단됐습니다. 답변 길이를 늘려 다시 시도하세요.')
-        summary = summary_text[:2200]
+        summary = summary_text[:chat_cfg['summary_max_chars']]
     return summary
 
 
-def _messages_for(item: dict, pending: dict) -> list:
+def _messages_for(item: dict, pending: dict, chat_cfg=None) -> list:
+    chat_cfg = chat_cfg or _CHAT_DEFAULTS
     transcript = list(item['messages']) + [pending]
     cursor = max(0, min(int(item.get('summary_through', 0)), len(item['messages'])))
     context = int(item['context_tokens'])
@@ -255,7 +291,7 @@ def _messages_for(item: dict, pending: dict) -> list:
     # 0 = auto: reserve a useful response window while keeping older messages
     # in rolling memory. The actual per-call limit uses all remaining context.
     reserve = response if response > 0 else max(1024, min(4096, context // 2))
-    budget = context - reserve - 400
+    budget = context - reserve - chat_cfg['context_reserve']
     if budget < 650:
         raise ValueError('컨텍스트 설정이 답변 길이에 비해 너무 작습니다.')
 
@@ -274,8 +310,8 @@ def _messages_for(item: dict, pending: dict) -> list:
         if cursor >= len(transcript) - 1:
             raise ValueError('현재 메시지가 컨텍스트 예산을 초과합니다. 입력을 줄이거나 서버 -c 값을 늘려 주세요.')
         # Summarize at most four oldest messages per pass. Preserve chronology.
-        n = min(4, len(transcript) - 1 - cursor)
-        item['summary'] = _summarize(item.get('summary', ''), transcript[cursor:cursor+n])
+        n = min(chat_cfg['summary_batch_messages'], len(transcript) - 1 - cursor)
+        item['summary'] = _summarize(item.get('summary', ''), transcript[cursor:cursor+n], chat_cfg)
         cursor += n
     raise RuntimeError('대화 컨텍스트를 구성하지 못했습니다.')
 
@@ -332,9 +368,10 @@ def post(path: str, body: dict) -> object:
                 raise ValueError('대화 기록이 10000개를 넘었습니다. 새 대화를 시작해 주세요.')
             _busy_change(1)
             try:
+                chat_cfg = _kwt_chat_runtime()  # one snapshot per send
                 pending = {'role': 'user', 'content': text}
-                prompt = _messages_for(item, pending)
-                answer, generation = _generate_complete(prompt, item)
+                prompt = _messages_for(item, pending, chat_cfg)
+                answer, generation = _generate_complete(prompt, item, chat_cfg)
                 item['messages'].extend([pending, {'role': 'assistant', 'content': answer,
                                                   'generation': generation}])
                 if item['title'] == '새 대화':
