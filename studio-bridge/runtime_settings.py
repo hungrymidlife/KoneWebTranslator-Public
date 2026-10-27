@@ -6,7 +6,9 @@ Only explicitly whitelisted settings can be saved by the GUI.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
+import threading
 import math
 import os
 import tempfile
@@ -14,6 +16,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_FILE = PROJECT_ROOT / 'runtime_settings.json'
+# KWT_UNIFIED_STABILITY_V1_6: avoid lost updates from two open Studio windows.
+_SAVE_LOCK = threading.RLock()
 DEFAULTS = {
     'schema_version': 1,
     'gemma': {
@@ -133,21 +137,42 @@ def load():
     return normalize(data)
 
 
+def revision(value):
+    """Stable revision of the effective settings, independent of JSON whitespace."""
+    serialized = json.dumps(normalize(value), sort_keys=True, ensure_ascii=False,
+                            separators=(',', ':'), allow_nan=False)
+    return hashlib.sha256(serialized.encode('utf-8')).hexdigest()
+
+
 def save(value):
-    data = normalize(value)
-    content = (json.dumps(data, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
-    fd, temp = tempfile.mkstemp(prefix='.kwt-runtime-', suffix='.json', dir=PROJECT_ROOT)
-    try:
-        with os.fdopen(fd, 'wb') as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temp, CONFIG_FILE)
-    finally:
-        if os.path.exists(temp):
-            os.unlink(temp)
+    # Backward compatible: old clients can post the normal schema 1 object.
+    # The V1.6 UI includes __expected_revision for optimistic concurrency.
+    if not isinstance(value, dict):
+        raise ValueError('설정 데이터는 JSON 객체여야 합니다.')
+    expected = value.get('__expected_revision')
+    if expected is not None and (not isinstance(expected, str) or len(expected) != 64 or
+                                 any(c not in '0123456789abcdef' for c in expected)):
+        raise ValueError('설정 리비전 값이 올바르지 않습니다.')
+    data = normalize({k: v for k, v in value.items() if k != '__expected_revision'})
+    with _SAVE_LOCK:
+        current = load()
+        if expected is not None and revision(current) != expected:
+            raise ValueError('다른 창에서 설정이 변경되었습니다. 현재 입력값은 유지됩니다. 저장값 다시 불러오기로 충돌을 해결하세요.')
+        content = (json.dumps(data, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
+        fd, temp = tempfile.mkstemp(prefix='.kwt-runtime-', suffix='.json', dir=PROJECT_ROOT)
+        try:
+            with os.fdopen(fd, 'wb') as stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temp, CONFIG_FILE)
+        finally:
+            if os.path.exists(temp):
+                os.unlink(temp)
     return data
 
 
 def payload():
-    return {'values': load(), 'defaults': copy.deepcopy(DEFAULTS), 'stored': CONFIG_FILE.is_file()}
+    values = load()
+    return {'values': values, 'defaults': copy.deepcopy(DEFAULTS),
+            'stored': CONFIG_FILE.is_file(), 'revision': revision(values)}
