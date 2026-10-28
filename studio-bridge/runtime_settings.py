@@ -38,7 +38,8 @@ DEFAULTS = {
                     'typeset_padding_percent': 4.5, 'typeset_line_height_ratio': 1.24,
                     'output_image_quality': 92, 'zip_compression_level': 6,
                     # KWT_VIRTUAL_OCR_BOX_V1_8
-                    'virtual_box_width_percent': 140, 'virtual_box_height_percent': 125},
+                    # KWT_VIRTUAL_BUBBLE_SAFE_V4_2
+                    'virtual_box_width_percent': 130, 'virtual_box_height_percent': 100},
     'chat': {'context_reserve': 400, 'auto_reply_margin': 512, 'summary_batch_messages': 4,
              'summary_chunk_budget': 1150, 'summary_output_tokens': 700,
              'summary_max_chars': 2200, 'summary_previous_chars': 2000,

@@ -1,12 +1,12 @@
 <!doctype html><html lang="ko"><head><meta charset="UTF-8"><link rel="stylesheet" href="style.css"></head><body class="options"><h2>KoneWebTranslator 설정</h2><label for="url">로컬 서버 주소</label><input id="url" value="http://127.0.0.1:8765"><p class="note">보안을 위해 localhost / 127.0.0.1 주소만 허용합니다. API 키는 확장 프로그램에 입력하지 마세요.</p><button id="save">저장</button><p id="msg"></p>
-<!-- KWT_PUBLIC_EARLY_OCR_STREAM_V3_1 · independent optional fast pipeline; defaults OFF. -->
+<!-- KWT_PUBLIC_EARLY_OCR_STREAM_V3_1 · independent optional fast pipeline; defaults ON. KWT_VIRTUAL_BUBBLE_SAFE_V4_2. -->
 <section style="margin-top:22px;border-top:1px solid #cbd5e1;padding-top:12px">
  <h3>실시간 이미지별 OCR (실험적 가속)</h3>
  <label style="display:flex;align-items:center;gap:9px;cursor:pointer">
-   <input type="checkbox" id="kwt-fast-stream" style="width:auto" />
+   <input type="checkbox" id="kwt-fast-stream" checked style="width:auto" />
    이미지별 즉시 전송 · OCR 시작 (ON / OFF)
  </label>
- <p class="note">기본 OFF: 기존 방식 유지. ON: 3장 병렬 다운로드 후 페이지 순서대로 바이너리 전달, 서버에서 첫 장부터 OCR/번역 시작. 캐시·강제 OCR·검수 UI는 기존 것을 재사용합니다. 문제가 생기면 OFF로 전환하세요. 이 옵션은 이 확장 프로그램에서만 적용됩니다.</p>
+ <p class="note">기본 ON (기존 저장값은 유지): 3장 병렬 다운로드 후 페이지 순서대로 바이너리 전달, 서버에서 첫 장부터 OCR/번역 시작. 캐시·강제 OCR·검수 UI는 기존 것을 재사용합니다. OFF를 선택하면 기존 방식으로 동작합니다. 이 옵션은 이 확장 프로그램에서만 적용됩니다.</p>
  <p id="kwt-fast-stream-state" role="status" class="note"></p>
 </section>
 <!-- KWT_SITE_CDN_PERMISSIONS_V3 -->

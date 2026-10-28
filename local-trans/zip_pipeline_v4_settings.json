@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "overlap_lama_with_ai": true,
+  "encode_workers": 2,
+  "max_inflight_pages": 4,
+  "poll_interval_seconds": 0.35
+}

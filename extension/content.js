@@ -538,7 +538,8 @@ async function send(selector,images,info,{force=false}={}){
   }
   // KWT_PUBLIC_EARLY_OCR_STREAM_V3_1 · streaming is opt-in; cached jobs and legacy batch stay unchanged.
   info.textContent='이미지 다운로드 준비 중...';ocrProgress('이미지 다운로드 준비 중',0,images.length);
-  const {kwtFastStreamV1=false}=await chrome.storage.local.get({kwtFastStreamV1:false});
+  // KWT_VIRTUAL_BUBBLE_SAFE_V4_2: default ON; explicitly saved OFF still wins.
+   const {kwtFastStreamV1=true}=await chrome.storage.local.get({kwtFastStreamV1:true});
   let data=null,uploadPromise=null;
   if(kwtFastStreamV1){
     // Before a job is accepted, falling back to the old batch is safe.

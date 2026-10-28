@@ -19,8 +19,9 @@ DEFAULTS = {
     'output_image_quality': 92,
     'zip_compression_level': 6,
     # KWT_VIRTUAL_OCR_BOX_V1_8: separate OCR bbox and Korean layout bbox.
-    'virtual_box_width_percent': 140,
-    'virtual_box_height_percent': 125,
+    # KWT_VIRTUAL_BUBBLE_SAFE_V4_2 · default width 130%, height 100%.
+    'virtual_box_width_percent': 130,
+    'virtual_box_height_percent': 100,
 }
 INTEGER_RANGES = {
     'lama_tile_size': (512, 1024),
