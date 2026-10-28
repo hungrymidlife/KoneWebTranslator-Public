@@ -39,6 +39,74 @@ async function fetchImage(url) {
   for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
   return {image_base64:btoa(binary),mime_type:blob.type};
 }
+// KWT_PUBLIC_EARLY_OCR_STREAM_V3_1: opt-in, ordered, 3-way download prefetch.
+// Send raw binary to localhost. Legacy SEND_BATCH is never modified.
+async function kwtStreamBlob(url) {
+  if(!/^https?:\/\//i.test(url))throw Error('HTTP(S) 이미지 URL만 지원');
+  const u=new URL(url);
+  if(['localhost','127.0.0.1','0.0.0.0','::1'].includes(u.hostname)||u.hostname.endsWith('.local'))throw Error('내부 주소 이미지 차단');
+  if(!await chrome.permissions.contains({origins:[u.origin+'/*']})){
+    await kwtRecordMissingImageHost(u.origin);
+    throw Error('이미지 호스트 권한 없음: '+u.origin);
+  }
+  const r=await fetch(url,{credentials:'include',redirect:'follow'});
+  if(!r.ok)throw Error('이미지 HTTP '+r.status);
+  const blob=await r.blob();
+  if(!blob.type.startsWith('image/'))throw Error('이미지 형식 아님');
+  if(blob.size>18*1024*1024)throw Error('18MB 초과 이미지');
+  return blob;
+}
+async function kwtStreamUpload(msg,tabId,frameId){
+  const images=msg.images.slice(0,100),failures=[];let uploaded=0;
+  const abort=()=>requestServer('/api/v1/images/stream/abort',{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job_id:msg.jobId})}).catch(()=>{});
+  try{
+    // Sliding 3-way prefetch: submit #1 immediately when ready, do not wait
+    // for #3. Uploads remain strictly in original page order.
+    const pending=new Map();
+    const prefetch=pos=>{
+      if(pos>=images.length||pending.has(pos))return;
+      const item=images[pos];
+      pending.set(pos,(async()=>{
+        try{return {item,blob:await kwtStreamBlob(item.url)};}
+        catch(e){return {item,error:String(e.message||e)};}
+      })());
+    };
+    for(let pos=0;pos<images.length;pos++){
+      prefetch(pos);prefetch(pos+1);prefetch(pos+2);
+      const row=await pending.get(pos);
+      pending.delete(pos);
+        const item=row.item;
+        if(row.error){
+          failures.push({index:item.index,url:item.url,error:row.error});
+          await requestServer('/api/v1/images/stream/fail',{
+            method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({job_id:msg.jobId,index:item.index,error:row.error})});
+        }else{
+          try{
+            await requestServer('/api/v1/images/stream/item?job_id='+encodeURIComponent(msg.jobId)+'&index='+item.index,{
+              method:'POST',headers:{'Content-Type':row.blob.type||'application/octet-stream'},body:row.blob});
+            uploaded++;
+          }catch(e){
+            const error=String(e.message||e);
+            failures.push({index:item.index,url:item.url,error});
+            // The server might have accepted an upload whose response was lost;
+            // on conflict abort rather than double-advance and corrupt ordering.
+            await requestServer('/api/v1/images/stream/fail',{
+              method:'POST',headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({job_id:msg.jobId,index:item.index,error})});
+          }
+        }
+        await notifyProgress(tabId,frameId,{stage:'upload',done:uploaded+failures.length,
+          total:images.length,failed:failures.length,jobId:msg.jobId});
+    }
+    return {uploaded,failures};
+  }catch(e){
+    await abort();
+    throw e;
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg,sender,sendResponse)=>{
  // KWT_STUDIO_EXTENSION_SYNC_V1_3 - handled by studio_sync_v1.js instead
  if(['KWT_STUDIO_PAIR','KWT_STUDIO_SYNC_NOW','KWT_STUDIO_LINK_STATUS','KWT_STUDIO_UNLINK'].includes(msg?.type))return false;
@@ -78,6 +146,12 @@ chrome.runtime.onMessage.addListener((msg,sender,sendResponse)=>{
    if(msg.type==='JOB_STATUS')return await requestServer('/api/v1/jobs/'+encodeURIComponent(msg.jobId));
    if(msg.type==='HEALTH')return await requestServer('/health');
    if(msg.type==='CACHE_LOOKUP')return await requestServer('/api/v1/cache/lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_url:msg.pageUrl,image_urls:msg.images.map(i=>i.url),pad_x_percent:msg.padX,pad_y_percent:msg.padY})});
+   // KWT_PUBLIC_EARLY_OCR_STREAM_V3_1 · create one job for the complete chapter before uploading.
+   if(msg.type==='STREAM_START')return await requestServer('/api/v1/images/stream/start',{
+     method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+       source_url:msg.pageUrl,selector:msg.selector,image_urls:msg.images.map(x=>x.url),
+       pad_x_percent:msg.padX,pad_y_percent:msg.padY})});
+   if(msg.type==='STREAM_UPLOAD')return await kwtStreamUpload(msg,sender.tab?.id,sender.frameId);
    if(msg.type==='SEND_BATCH'){
      const images=[];const failures=[];const tabId=sender.tab?.id;const frameId=sender.frameId;const total=Math.min(msg.images.length,100);
      await notifyProgress(tabId,frameId,{stage:'download',done:0,total});

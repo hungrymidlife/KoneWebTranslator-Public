@@ -536,10 +536,37 @@ async function send(selector,images,info,{force=false}={}){
    if(!cache?.ok)throw Error('기존 OCR 조회 실패: '+(cache?.error||'서버 응답 없음'));
    if(cache.result?.found){ocrSetJob(cache.result.job);info.textContent='기존 OCR 결과 재사용 ('+cache.result.job.results.length+'장). 재연산하지 않았습니다.';return {ok:true,cached:true};}
   }
+  // KWT_PUBLIC_EARLY_OCR_STREAM_V3_1 · streaming is opt-in; cached jobs and legacy batch stay unchanged.
   info.textContent='이미지 다운로드 준비 중...';ocrProgress('이미지 다운로드 준비 중',0,images.length);
-  const response=await chrome.runtime.sendMessage({type:'SEND_BATCH',pageUrl:location.href,selector,images,padX:ocrOverlay.padding.x,padY:ocrOverlay.padding.y});
-  if(!response?.ok)throw Error(response?.error||'전송 실패');
-  const data=response.result;const jobId=data.result.job_id;
+  const {kwtFastStreamV1=false}=await chrome.storage.local.get({kwtFastStreamV1:false});
+  let data=null,uploadPromise=null;
+  if(kwtFastStreamV1){
+    // Before a job is accepted, falling back to the old batch is safe.
+    const streamImages=images.map((image,index)=>({...image,index}));
+    const start=await chrome.runtime.sendMessage({type:'STREAM_START',pageUrl:location.href,selector,images:streamImages,padX:ocrOverlay.padding.x,padY:ocrOverlay.padding.y});
+    if(start?.ok && start.result?.job_id){
+      const streamId=start.result.job_id;
+      data={result:{job_id:streamId},uploaded:images.length,failures:[]};
+      // Begin download/upload concurrently with existing 1.5s result polling.
+      uploadPromise=chrome.runtime.sendMessage({type:'STREAM_UPLOAD',jobId:streamId,images:streamImages})
+        .then(res=>{
+          if(!res?.ok)throw Error(res?.error||'스트리밍 전송 실패');
+          data.uploaded=res.result.uploaded;data.failures=res.result.failures;
+          return res.result;
+        });
+      // Avoid an unhandled rejection while polling/receiving OCR results.
+      uploadPromise.catch(()=>{});
+    }else{
+      console.warn('[KWT_STREAM_V3_1] Stream start unavailable; using unchanged legacy batch.',start?.error);
+      note('빠른 OCR 서버 미지원: 기존 일괄 방식으로 자동 전환합니다.');
+    }
+  }
+  if(!data){
+    const response=await chrome.runtime.sendMessage({type:'SEND_BATCH',pageUrl:location.href,selector,images,padX:ocrOverlay.padding.x,padY:ocrOverlay.padding.y});
+    if(!response?.ok)throw Error(response?.error||'전송 실패');
+    data=response.result;
+  }
+  const jobId=data.result.job_id;
   info.textContent=`서버 접수: ${data.uploaded}장 / 실패 ${data.failures.length}장\n작업 ID: ${jobId}\nOCR 상태 확인 중...`;ocrProgress('OCR 처리 중',0,data.uploaded,jobId,data.failures.length);
   // KWT_PAGE_STREAM_V1: reveal pages as soon as OCR/translation updates arrive.
   let finished=false, lastRevision='';
@@ -560,6 +587,7 @@ async function send(selector,images,info,{force=false}={}){
    const translationDone=!j.translation_status || ['completed','completed_with_errors','failed'].includes(j.translation_status);
    if(ocrDone && translationDone){
     if(j.results?.length){ocrSetJob(j);const key='kwt-ocr-job:'+location.origin+location.pathname;await chrome.storage.local.set({[key]:jobId});}
+    if(uploadPromise)await uploadPromise; // Confirm upload; failed regions remain errors in the existing job.
     finished=true;
     return {ok:j.status!=='failed',jobId,status:j.status};
    }
