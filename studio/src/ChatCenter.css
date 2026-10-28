@@ -81,3 +81,39 @@
 .kwt-chat-delete-buttons button.danger{border-color:#b94848;background:#ae3939;color:#fff}
 .kwt-chat-delete-buttons button:disabled{cursor:default;opacity:.55}
 .kwt-chat-delete-buttons button:focus-visible{outline:2px solid #83cfff;outline-offset:3px}
+
+/* KWT_PRIVATE_TOOLS_V2_5: explicit GitHub read-only tool surface */
+.kwt-chat-github-toggle{display:inline-flex!important;align-items:center;gap:5px;white-space:nowrap;font-size:12px;padding:8px 12px!important}
+.kwt-chat-github-toggle.active{background:#174f59!important;border-color:#38a3a8!important;color:#d7ffff!important}
+.kwt-chat-tool-events{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0;font-size:11px;color:#96bfd3}
+.kwt-chat-tool-events span{padding:3px 7px;background:#152d35;border:1px solid #33505d;border-radius:7px}
+
+/* KWT_PRIVATE_HISTORY_V2_6 */
+.kwt-chat-history-shortcut{margin:6px 0;display:flex;align-items:center;gap:8px}
+.kwt-chat-history-shortcut button{font-size:12px;cursor:pointer;border-radius:8px;padding:6px 10px;border:1px solid #3a6570;background:#15343f;color:#b8e9ee}
+.kwt-chat-history-shortcut button:disabled{opacity:.5;cursor:default}
+
+/* KWT_PRIVATE_CHAT_SAVE_V2_6_1 */
+.kwt-chat-save-notice{color:#8ce0bd;font-size:12px;margin:0 0 9px;white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* KWT_PRIVATE_REVIEW_GUARD_V2_7 */
+.kwt-chat-review-status{padding:6px 9px;border-left:3px solid #4e9a9b;color:#b5d4df;font-size:11px;line-height:1.6;margin:4px 0 7px;background:#10222c;max-width:100%}
+.kwt-chat-review-status.partial{border-color:#c8a15b;color:#f0d4a1}
+.kwt-chat-review-status.blocked{border-color:#ce6f74;color:#ffc7ca}
+
+/* KWT_PRIVATE_LOCAL_TOOLS_V2_9 */
+.kwt-chat-actions .kwt-chat-local-toggle{display:inline-flex;align-items:center;gap:5px;padding:7px 10px;font-size:12px;white-space:nowrap}
+.kwt-chat-actions .kwt-chat-local-toggle.active{background:#175d45;color:#d7ffee;border-color:#48a785}
+.kwt-chat-local-manager{padding:12px 18px;background:#162439;border-bottom:1px solid #38516c;display:flex;flex-direction:column;gap:9px}
+.kwt-chat-local-title{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.kwt-chat-local-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.kwt-chat-local-row select,.kwt-chat-local-row input{flex:1;min-width:190px;background:#101c2d;color:#dce7f9;padding:8px;border:1px solid #415a74;border-radius:7px}
+.kwt-chat-local-manager button{display:inline-flex;align-items:center;gap:5px;background:#213449;color:#d9e8f9;border:1px solid #49617d;border-radius:7px;padding:7px 10px;cursor:pointer}
+.kwt-chat-local-manager button:disabled{opacity:.5;cursor:default}
+.kwt-chat-local-manager small{font-size:11px;color:#9ab5cd;line-height:1.55}
+
+/* KWT_PRIVATE_LOCAL_FILTER_TOGGLES_V2_9_3: compact persistent file-filter controls */
+.kwt-chat-local-filters{display:flex;flex-wrap:wrap;gap:8px 20px;padding:8px 10px;border:1px solid #415a74;border-radius:8px;background:#101e30}
+.kwt-chat-local-filter{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#d4e4f2;cursor:pointer}
+.kwt-chat-local-filter input[type="checkbox"]{width:15px;height:15px;accent-color:#4ea99b;cursor:pointer}
+.kwt-chat-local-filter b{font-size:11px;color:#a1c6e0}

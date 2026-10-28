@@ -17,7 +17,7 @@ if (-not (Test-Path -LiteralPath $model -PathType Leaf)) { throw "Model missing:
 
 # KWT_UNIFIED_RUNTIME_V1: validated JSON saved by Studio; fallback is the original launcher.
 $gemmaOptions = @{
-    context_size = 8192; gpu_layers = 99; flash_attention = 'on'; parallel_slots = 1
+    context_size = 8192; gpu_layers = 99; flash_attention = 'on'; parallel_slots = 1; mmproj_enabled = $false # KWT_PRIVATE_MMPROJ_TOGGLE_V3_0
     top_k = 64; top_p = 0.9; min_p = 0.05; repeat_penalty = 1.1
 }
 $runtimeFile = Join-Path (Split-Path -Parent $PSScriptRoot) 'runtime_settings.json'
@@ -30,6 +30,12 @@ if (Test-Path -LiteralPath $runtimeFile -PathType Leaf) {
         $item = $runtimeJson.gemma.PSObject.Properties[$name]
         if ($null -eq $item) { throw "runtime_settings.json missing Gemma option: $name" }
         $gemmaOptions[$name] = $item.Value
+    }
+    # Optional boolean; legacy runtime_settings.json has no mmproj_enabled key.
+    $mmprojSetting = $runtimeJson.gemma.PSObject.Properties['mmproj_enabled']
+    if ($null -ne $mmprojSetting) {
+        if ($mmprojSetting.Value -isnot [bool]) { throw 'runtime_settings.json gemma.mmproj_enabled must be boolean.' }
+        $gemmaOptions['mmproj_enabled'] = $mmprojSetting.Value
     }
     if ([int]$gemmaOptions['context_size'] -lt 2048 -or [int]$gemmaOptions['context_size'] -gt 131072 -or
         [int]$gemmaOptions['gpu_layers'] -lt 0 -or [int]$gemmaOptions['gpu_layers'] -gt 999 -or
@@ -53,18 +59,32 @@ $argsList = @(
     '--min-p', ([System.Convert]::ToString([double]$gemmaOptions['min_p'],[System.Globalization.CultureInfo]::InvariantCulture)),
     '--repeat-penalty', ([System.Convert]::ToString([double]$gemmaOptions['repeat_penalty'],[System.Globalization.CultureInfo]::InvariantCulture))
 )
-# KWT_CHAT_ATTACH_V2_3: opt-in multimodal projector for image/video chat.
-# Name a model-compatible projector exactly mmproj-gemma-4-12b-it.gguf.
-$mmproj = Join-Path $root 'models\mmproj-gemma-4-12b-it.gguf'
-if (Test-Path -LiteralPath $mmproj -PathType Leaf) {
+# '''+MARK+''' · per-server-start vision toggle, defaults OFF.
+# Prefer the original HauhauCS distribution filename. Accept the legacy filename
+# only for users who already renamed a compatible projector themselves.
+$mmproj = Join-Path $root 'models\mmproj-Gemma4-12B-QAT-Uncensored-HauhauCS-Balanced-BF16.gguf'
+$legacyMmproj = Join-Path $root 'models\mmproj-gemma-4-12b-it.gguf'
+if ([bool]$gemmaOptions['mmproj_enabled']) {
+    if (-not (Test-Path -LiteralPath $mmproj -PathType Leaf)) {
+        if (Test-Path -LiteralPath $legacyMmproj -PathType Leaf) { $mmproj = $legacyMmproj }
+        else { throw 'mmproj ON but the projector is missing. Run INSTALL_MMPROJ.bat, then restart Gemma.' }
+    }
     $mmHelp = (& $server --help 2>&1 | Out-String)
-    if ($mmHelp -notmatch 'mmproj') {
-        throw 'The installed llama-server does not support --mmproj. Update llama.cpp or remove the optional projector.'
+    if ($mmHelp -notmatch '(?m)--mmproj') {
+        throw 'The installed llama-server does not support --mmproj. Update llama.cpp or switch mmproj OFF.'
     }
     $argsList += @('--mmproj', $mmproj)
-    Write-Host 'Multimodal projector enabled for local chat (images/video frames).' -ForegroundColor Green
+    Write-Host "mmproj ON: $mmproj (image input enabled)" -ForegroundColor Green
 } else {
-    Write-Host 'Multimodal projector absent: text-only chat. Image/video analysis will require a matching mmproj.' -ForegroundColor Yellow
+    Write-Host 'mmproj OFF: text-only mode; projector will not be loaded.' -ForegroundColor Yellow
+}
+# KWT_PRIVATE_TOOLS_V2_5: llama.cpp native tool calling requires Jinja.
+$toolHelp = (& $server --help 2>&1 | Out-String)
+if ($toolHelp -match '(?m)--jinja') {
+    $argsList += '--jinja'
+    Write-Host 'Gemma tool calling: Jinja enabled.' -ForegroundColor Green
+} else {
+    Write-Host 'WARNING: llama-server does not advertise --jinja. GitHub tools may fail.' -ForegroundColor Yellow
 }
 if ($MTP) {
     if (-not (Test-Path -LiteralPath $draft -PathType Leaf)) {

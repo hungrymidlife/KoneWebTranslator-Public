@@ -1,4 +1,4 @@
-"""KWT_PUBLIC_EARLY_OCR_STREAM_V3_1.
+"""KWT_PRIVATE_EARLY_OCR_STREAM_V3_1.
 
 Optional, bounded, ordered binary image ingestion.  Uses the existing OCR worker
 and page-level translation.  No new OCR model, cache format or output schema.

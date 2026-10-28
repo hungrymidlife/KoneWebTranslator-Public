@@ -8,7 +8,7 @@ export type SettingsGroup='overview'|'gemma'|'pipeline'|'ocr'|'translation'|'cha
 
 type Runtime={
   schema_version:number
-  gemma:{context_size:number;gpu_layers:number;flash_attention:'on'|'off'|'auto';parallel_slots:number;top_k:number;top_p:number;min_p:number;repeat_penalty:number}
+  gemma:{context_size:number;gpu_layers:number;flash_attention:'on'|'off'|'auto';parallel_slots:number;top_k:number;top_p:number;min_p:number;repeat_penalty:number;mmproj_enabled:boolean} // KWT_PRIVATE_MMPROJ_TOGGLE_V3_0
   pipeline:{batch_pages:number;batch_raw_mb:number;ocr_workers:number;translation_workers:number;zip_workers:number} // KWT_UNIFIED_WORKERS_V1_2
   // KWT_UNIFIED_ADVANCED_V1_3
   ocr:{pad_x_percent:number;pad_y_percent:number}
@@ -35,7 +35,7 @@ type Props={
 }
 const DEFAULTS:Runtime={
   schema_version:1,
-  gemma:{context_size:8192,gpu_layers:99,flash_attention:'on',parallel_slots:1,top_k:64,top_p:0.9,min_p:0.05,repeat_penalty:1.1},
+  gemma:{context_size:8192,gpu_layers:99,flash_attention:'on',parallel_slots:1,top_k:64,top_p:0.9,min_p:0.05,repeat_penalty:1.1,mmproj_enabled:false},
   pipeline:{batch_pages:3,batch_raw_mb:22,ocr_workers:1,translation_workers:1,zip_workers:1},
   ocr:{pad_x_percent:12,pad_y_percent:8},
   translation:{max_region_count:20,max_source_chars:1200,timeout_sec:120,top_k:64,top_p:0.9,min_p:0.05},
@@ -143,7 +143,7 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
     }catch(e){setZipV4Error(e instanceof Error?e.message:String(e))}
     finally{setZipV4Saving(false)}
   }
-  const gemmaChange=(key:keyof Runtime['gemma'],value:number|string)=>{
+  const gemmaChange=(key:keyof Runtime['gemma'],value:number|string|boolean)=>{
     setRuntime(prev=>({...prev,gemma:{...prev.gemma,[key]:value}}));setNotice('');setError('')
   }
   const pipelineChange=(key:keyof Runtime['pipeline'],value:number)=>{
@@ -212,8 +212,11 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
       <div className="kwt-tree-fields">
         {FIELDS.map(field=><label key={field.key}>{field.label}<input type="number" min={field.min} max={field.max} step={field.step} value={runtime.gemma[field.key]} disabled={loading||saving} onChange={e=>gemmaChange(field.key,Number(e.target.value))}/></label>)}
         <label>Flash Attention<select value={runtime.gemma.flash_attention} disabled={loading||saving} onChange={e=>gemmaChange('flash_attention',e.target.value)}><option value="on">ON</option><option value="off">OFF</option><option value="auto">AUTO</option></select></label>
+        {/* KWT_PRIVATE_MMPROJ_TOGGLE_V3_0 · mmproj is loaded only on Gemma restart, never a separate server. */}
+        <label>이미지 분석 mmproj<select value={runtime.gemma.mmproj_enabled?'on':'off'} disabled={loading||saving} onChange={e=>gemmaChange('mmproj_enabled',e.target.value==='on')}><option value="off">OFF (기본 · 텍스트 전용)</option><option value="on">ON (서버 시작 시 멀티모달 로드)</option></select></label>
         <label>서버 실행 모드<select value={mode} onChange={e=>setMode(e.target.value as 'MTP'|'Normal')}><option value="Normal">Normal</option><option value="MTP">MTP</option></select></label>
       </div>
+      <p className="ctl-description">mmproj ON은 전용 projector 파일이 설치돼 있어야 하며, Gemma 서버를 완전히 재시작해야 적용돼. 파일은 동봉된 INSTALL_MMPROJ.bat으로 다운로드할 수 있어. OFF에서는 --mmproj를 전달하지 않아. MTP/--jinja는 변경하지 않아.</p>
       <p className="ctl-description">컨텍스트(-c), GPU(-ngl), Flash Attention(-fa), 슬롯(-np), 샘플링 기본값을 ai/Launch.ps1 실행에 연결해. 슬롯 증가만으로 번역 요청이 병렬화되지는 않아.</p>
       <div className="kwt-tree-inline"><label>Gemma 설치 경로<input value={legacy.gemma_dir} onChange={e=>updateLegacy({gemma_dir:e.target.value})}/></label><button className="secondary" onClick={()=>void browseGemma()}>폴더 찾기</button><button className="secondary" disabled={!ready} onClick={()=>saveLegacy('gemma')}>경로 저장</button></div>
       <p className="ctl-description">설치 경로는 기존 관리 설정으로 별도 저장돼. 위의 '통합 설정 저장' 버튼과 구분해 사용해 줘.</p>

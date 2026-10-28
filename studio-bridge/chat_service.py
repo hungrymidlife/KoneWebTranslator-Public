@@ -115,6 +115,9 @@ def _public(item: dict) -> dict:
                                      'context_tokens', 'reply_tokens', 'temperature',
                                      'summary', 'summary_through', 'messages')}
     result['thinking_enabled'] = item.get('thinking_enabled') is True  # KWT_CHAT_THINKING_V2_4
+    result['github_tools_enabled'] = item.get('github_tools_enabled') is True  # KWT_PRIVATE_TOOLS_V2_5
+    result['local_tools_enabled'] = item.get('local_tools_enabled') is True  # KWT_PRIVATE_LOCAL_TOOLS_V2_9
+    result['local_project_id'] = str(item.get('local_project_id') or '')
     return result
 
 
@@ -212,6 +215,9 @@ def _output_limit(messages: list, item: dict, chat_cfg=None) -> int:
 def _generate_complete(prompt: list, item: dict, chat_cfg=None) -> tuple[str, dict]:
     """Continue on length stops, bounded by configured server call count."""
     chat_cfg = chat_cfg or _CHAT_DEFAULTS
+    if item.get('github_tools_enabled') is True or item.get('local_tools_enabled') is True:
+        from llm_tools import chat_with_tools
+        return chat_with_tools(prompt, item, chat_cfg, _estimate)  # KWT_PRIVATE_TOOLS_V2_5
     thinking_enabled = item.get('thinking_enabled') is True  # Per-conversation snapshot
     selected = int(item['reply_tokens'])
     temperature = float(item['temperature'])
@@ -331,6 +337,12 @@ def _messages_for(item: dict, pending: dict, chat_cfg=None) -> list:
 
 
 def get(path: str, q: dict) -> object:
+    if path == '/api/chat/local-projects':
+        from local_file_tools import projects
+        return {'projects': projects(), 'read_only': True}
+    if path == '/api/chat/tools':
+        from llm_tools import status
+        return {'github': status(), 'read_only': True}
     if path == '/api/chat/list':
         return {'conversations': _list()}
     if path == '/api/chat/conversation':
@@ -343,11 +355,29 @@ def get(path: str, q: dict) -> object:
 def post(path: str, body: dict) -> object:
     if not isinstance(body, dict):
         raise ValueError('잘못된 요청입니다.')
+    if path == '/api/chat/local-projects/register':
+        from local_file_tools import register, projects
+        row = register(body.get('path'))
+        return {'project': row, 'projects': projects()}
+    if path == '/api/chat/local-projects/unregister':
+        from local_file_tools import unregister, projects
+        done = unregister(body.get('project_id'))
+        return dict(done, projects=projects())
+    # KWT_PRIVATE_LOCAL_FILTER_TOGGLES_V2_9_3 - only user GUI requests can change per-project options.
+    if path == '/api/chat/local-projects/filters':
+        from local_file_tools import update_filters, projects
+        allowed = {'project_id', 'sensitive_filter_enabled', 'exclude_generated_dirs'}
+        if set(body) - allowed or 'project_id' not in body:
+            raise ValueError('프로젝트 필터 요청 필드가 올바르지 않습니다.')
+        kwargs = {k: body[k] for k in ('sensitive_filter_enabled', 'exclude_generated_dirs') if k in body}
+        row = update_filters(body['project_id'], **kwargs)
+        return {'project': row, 'projects': projects()}
     if path == '/api/chat/create':
         now = time.time()
         item = {'id': uuid.uuid4().hex, 'title': '새 대화', 'created': now, 'updated': now,
                 'system_prompt': DEFAULT_SYSTEM, 'context_tokens': 4096,
-                'reply_tokens': 0, 'temperature': 0.65, 'thinking_enabled': False,
+                'reply_tokens': 0, 'temperature': 0.65, 'thinking_enabled': False, 'github_tools_enabled': False,
+                'local_tools_enabled': False, 'local_project_id': '',  # KWT_PRIVATE_LOCAL_TOOLS_V2_9
                 'summary': '', 'summary_through': 0, 'messages': []}
         _save(item)
         return _public(item)
@@ -359,6 +389,23 @@ def post(path: str, body: dict) -> object:
             kwt_delete_attachments(cid)
             return {'deleted': True}
         if path == '/api/chat/settings':
+            local_tools_enabled = body.get('local_tools_enabled', item.get('local_tools_enabled', False))
+            if type(local_tools_enabled) is not bool:
+                raise ValueError('로컬 파일 도구 ON/OFF 설정은 boolean이어야 합니다.')
+            local_project_id = body.get('local_project_id', item.get('local_project_id', ''))
+            if not isinstance(local_project_id, str):
+                raise ValueError('프로젝트 선택값이 잘못됐습니다.')
+            if local_tools_enabled:
+                from local_file_tools import selected
+                selected(local_project_id)  # Only explicitly registered roots.
+            github_tools_enabled = body.get('github_tools_enabled', item.get('github_tools_enabled', False))
+            if type(github_tools_enabled) is not bool:
+                raise ValueError('GitHub 도구 설정은 true 또는 false만 허용합니다.')
+            if github_tools_enabled:
+                from llm_tools import status
+                state = status()
+                if not state['available']:
+                    raise ValueError(state['message'])
             thinking_enabled = body.get('thinking_enabled', item.get('thinking_enabled', False))
             if type(thinking_enabled) is not bool:
                 raise ValueError('추론 모드는 true 또는 false만 허용합니다.')
@@ -376,7 +423,8 @@ def post(path: str, body: dict) -> object:
                 raise ValueError('temperature 범위는 0~2입니다.')
             item.update(system_prompt=prompt, context_tokens=context,
                         reply_tokens=reply, temperature=temperature,
-                        thinking_enabled=thinking_enabled, updated=time.time())
+                        thinking_enabled=thinking_enabled, github_tools_enabled=github_tools_enabled,
+                        local_tools_enabled=local_tools_enabled, local_project_id=local_project_id, updated=time.time())
             _save(item)
             return _public(item)
         if path == '/api/chat/send':

@@ -536,7 +536,7 @@ async function send(selector,images,info,{force=false}={}){
    if(!cache?.ok)throw Error('기존 OCR 조회 실패: '+(cache?.error||'서버 응답 없음'));
    if(cache.result?.found){ocrSetJob(cache.result.job);info.textContent='기존 OCR 결과 재사용 ('+cache.result.job.results.length+'장). 재연산하지 않았습니다.';return {ok:true,cached:true};}
   }
-  // KWT_PUBLIC_EARLY_OCR_STREAM_V3_1 · streaming is opt-in; cached jobs and legacy batch stay unchanged.
+  // KWT_PRIVATE_EARLY_OCR_STREAM_V3_1 · streaming is opt-in; cached jobs and legacy batch stay unchanged.
   info.textContent='이미지 다운로드 준비 중...';ocrProgress('이미지 다운로드 준비 중',0,images.length);
   // KWT_VIRTUAL_BUBBLE_SAFE_V4_2: default ON; explicitly saved OFF still wins.
    const {kwtFastStreamV1=true}=await chrome.storage.local.get({kwtFastStreamV1:true});

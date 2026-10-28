@@ -39,7 +39,7 @@ async function fetchImage(url) {
   for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
   return {image_base64:btoa(binary),mime_type:blob.type};
 }
-// KWT_PUBLIC_EARLY_OCR_STREAM_V3_1: opt-in, ordered, 3-way download prefetch.
+// KWT_PRIVATE_EARLY_OCR_STREAM_V3_1: opt-in, ordered, 3-way download prefetch.
 // Send raw binary to localhost. Legacy SEND_BATCH is never modified.
 async function kwtStreamBlob(url) {
   if(!/^https?:\/\//i.test(url))throw Error('HTTP(S) 이미지 URL만 지원');
@@ -146,7 +146,7 @@ chrome.runtime.onMessage.addListener((msg,sender,sendResponse)=>{
    if(msg.type==='JOB_STATUS')return await requestServer('/api/v1/jobs/'+encodeURIComponent(msg.jobId));
    if(msg.type==='HEALTH')return await requestServer('/health');
    if(msg.type==='CACHE_LOOKUP')return await requestServer('/api/v1/cache/lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_url:msg.pageUrl,image_urls:msg.images.map(i=>i.url),pad_x_percent:msg.padX,pad_y_percent:msg.padY})});
-   // KWT_PUBLIC_EARLY_OCR_STREAM_V3_1 · create one job for the complete chapter before uploading.
+   // KWT_PRIVATE_EARLY_OCR_STREAM_V3_1 · create one job for the complete chapter before uploading.
    if(msg.type==='STREAM_START')return await requestServer('/api/v1/images/stream/start',{
      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
        source_url:msg.pageUrl,selector:msg.selector,image_urls:msg.images.map(x=>x.url),

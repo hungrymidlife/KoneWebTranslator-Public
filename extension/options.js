@@ -6,7 +6,7 @@ document.getElementById('save').onclick=async()=>{
   await chrome.storage.local.set({serverUrl:url});msg.textContent='저장되었습니다.';
 };
 
-// KWT_PUBLIC_EARLY_OCR_STREAM_V3_1 · opt-in, persisted independently of the server URL.
+// KWT_PRIVATE_EARLY_OCR_STREAM_V3_1 · opt-in, persisted independently of the server URL.
 (async()=>{
   const box=document.getElementById('kwt-fast-stream');
   const state=document.getElementById('kwt-fast-stream-state');
