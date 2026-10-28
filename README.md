@@ -177,6 +177,53 @@ Chrome 웹 스토어 등록이 아니라 **로컬 폴더 로드 방식**을 사�
 
 **주의:** `extension` 폴더를 로드한 뒤에는 해당 폴더를 이동하거나 삭제하지 마세요. 프로젝트 소스를 업데이트했다면 `chrome://extensions`에서 KoneWebTranslator의 **새로고침**을 눌러 변경 사항을 반영하세요. 잠시 동기화 기록이 없더라도 실제 페어링이 해제된 것은 아닐 수 있습니다.
 
+## 선택 기능: Studio AI 채팅의 이미지 분석·GitHub 연동
+
+아래 기능은 **기본 만화 번역에 필수가 아닌 선택 기능**입니다. 추가 구성요소를 설치하지 않아도 일반 텍스트 채팅, OCR, Gemma 텍스트 번역, LaMa 식질, ZIP 자동 번역, Chrome 확장앱 번역을 사용할 수 있습니다. **`설치 · 환경 점검`의 필수 설치/전체 검사 대상에 포함되지 않으며**, 필요할 때만 수동으로 설치하세요.
+
+### 채팅에서 이미지·영상 내용 분석 — Gemma mmproj (선택)
+
+이미지 파일 업로드·크기 변환에는 기본 Python 패키지의 Pillow가, 영상의 대표 프레임 추출에는 OpenCV가 사용됩니다. 하지만 **업로드한 이미지나 영상 프레임의 내용을 Gemma가 실제로 분석**하려면 현재 Gemma GGUF와 호환되는 **mmproj (비전 projector)** 모델을 별도로 준비해야 합니다.
+
+1. [Gemma 4 HauhauCS 모델의 mmproj 파일](https://huggingface.co/HauhauCS/Gemma4-12B-QAT-Uncensored-HauhauCS-Balanced/blob/main/mmproj-Gemma4-12B-QAT-Uncensored-HauhauCS-Balanced-BF16.gguf) 페이지에서 **Download**를 눌러 `mmproj-Gemma4-12B-QAT-Uncensored-HauhauCS-Balanced-BF16.gguf`를 다운로드합니다 (약 175 MB).
+2. 다운로드한 파일을 Gemma 설치 폴더의 `models`에 복사합니다. 기본 경로는 `C:\AI\Gemma4MTP\models\`입니다. Gemma 설치 경로를 변경했다면 **변경한 경로의 `models`**를 사용하세요. 파일명은 바꾸지 마세요.
+3. Studio의 **환경 설정 → Gemma 설정 → 이미지 분석 mmproj**를 **ON**으로 변경하고 설정을 저장합니다.
+4. **AI 서버 관리**에서 Gemma 서버를 완전히 종료한 후 다시 실행합니다. mmproj는 서버 시작 시 로드되며, 사용 중인 llama.cpp 실행 파일이 `--mmproj` 옵션을 지원해야 합니다.
+
+현재 배포본에는 GUI 설명에 등장하는 `INSTALL_MMPROJ.bat`이 포함되어 있지 않으므로 위 수동 설치 방법을 사용하세요. mmproj가 없으면 설정을 **OFF(기본값)**로 유지하세요. ON 상태에서 파일이 없거나 호환되지 않으면 Gemma 서버 시작에 실패할 수 있습니다. mmproj 사용 시 VRAM 사용량이 증가할 수 있습니다.
+
+### 채팅에서 GitHub 저장소·커밋·PR 조회 — GitHub CLI (선택)
+
+Studio 채팅의 **GitHub 도구 ON** 기능은 사용자의 Windows 계정에 설치된 GitHub CLI(`gh`)와 해당 계정의 인증 상태를 사용합니다. 프로젝트 자체에 GitHub 인증키를 입력하거나 저장할 필요는 없습니다.
+
+PowerShell에서 다음 명령을 실행합니다.
+
+```powershell
+winget install --id GitHub.cli --source winget
+```
+
+설치 후 **터미널을 새로 열고** 다음을 실행해 브라우저에서 GitHub 로그인을 완료합니다.
+
+```powershell
+gh --version
+gh auth login
+gh auth status
+```
+
+인증 확인 후 Studio를 재시작하고 채팅에서 **GitHub 도구를 ON**으로 켠 다음 조회할 저장소를 `소유자/저장소명` 형식으로 지정하세요. 비공개 저장소는 인증한 계정에 조회 권한이 있어야 합니다. 현재 GitHub 도구는 PR·커밋·코드 등을 **읽기 전용**으로 조회하며, 수정·푸시 기능을 제공하지 않습니다.
+
+GitHub CLI가 없거나 인증하지 않아도 일반 채팅과 번역 기능에는 영향이 없습니다. 설치 참고: [GitHub CLI Windows 안내](https://github.com/cli/cli/blob/trunk/docs/install_windows.md) · [GitHub CLI 로그인 안내](https://cli.github.com/manual/gh_auth_login).
+
+### 채팅에 PDF 문서 첨부 (기본 Python 설치에 포함)
+
+텍스트가 들어 있는 PDF의 글자 추출에는 **pypdf**를 사용합니다. `SETUP.bat` 또는 **설치 · 환경 점검 → 기본 Python 패키지 → 설치/복구**에서 `local-server/requirements.txt`와 함께 설치됩니다. 별도 채팅 설치 BAT는 필요하지 않습니다. PDF 첨부 시 `pypdf` 누락 오류가 발생하면 다음 명령으로 기본 가상환경에 설치할 수 있습니다.
+
+```powershell
+.\local-server\.venv\Scripts\python.exe -m pip install "pypdf>=5,<7"
+```
+
+이 기능은 **텍스트 PDF 추출**용이며 이미지로만 구성된 스캔 PDF에 OCR을 수행하지는 않습니다. PDF 분석·이미지 분석·GitHub 조회 기능은 기본 만화 번역 파이프라인과 별개입니다.
+
 ## 자주 발생하는 문제
 
 | 증상 | 확인할 내용 |
