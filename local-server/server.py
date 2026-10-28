@@ -168,6 +168,9 @@ def process_job(job_id, items, pad_x_percent, pad_y_percent):
         jobs[job_id].update(translation_status='running', translation_completed=0, translation_errors=0, translation_ocr_done=False)
     for item in items:
         try:
+            # KWT_PUBLIC_EARLY_OCR_STREAM_V3_1 · keep failed page indices when an optional streaming upload fails.
+            if item.get('stream_error'):
+                raise ValueError(item['stream_error'])
             with Image.open(io.BytesIO(item['data'])) as opened:
                 im = ImageOps.exif_transpose(opened).convert('RGB')
                 width, height = im.size
@@ -421,6 +424,13 @@ def batch_receive(payload: Batch):
         jobs[job_id] = {'ocr_settings': cfg, 'ocr_profile': ocr_identity(cfg), 'job_id': job_id, 'status': 'queued', 'total': len(decoded), 'completed': 0, 'source_url': payload.source_url, 'selector': payload.selector, 'results': [], 'created_at': datetime.now(timezone.utc).isoformat(), 'output_dir': str(DATA.resolve()), 'pad_x_percent': pad_x, 'pad_y_percent': pad_y}
     executor.submit(process_job, job_id, decoded, pad_x, pad_y)
     return {'accepted': len(decoded), 'job_id': job_id, 'status': 'queued', 'status_url': f'/api/v1/jobs/{job_id}'}
+
+# KWT_PUBLIC_EARLY_OCR_STREAM_V3_1 · additional image-at-a-time API. The legacy batch route above is unchanged.
+from stream_ingest_v1 import install as _kwt_install_early_ocr_stream
+_kwt_install_early_ocr_stream(
+    app, jobs=jobs, lock=lock, executor=executor, process_job=process_job,
+    current_ocr_settings=current_ocr_settings, ocr_identity=ocr_identity,
+    resolve_padding=_kwt_resolve_padding, image_max_bytes=MAX_IMAGE_BYTES, output_dir=DATA)
 
 class ManualWindowsOCR(BaseModel):
     job_id: str
