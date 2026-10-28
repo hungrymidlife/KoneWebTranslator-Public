@@ -24,6 +24,7 @@ DEFAULTS = {
         'context_size': 8192, 'gpu_layers': 99, 'flash_attention': 'on',
         'parallel_slots': 1, 'top_k': 64, 'top_p': 0.9,
         'min_p': 0.05, 'repeat_penalty': 1.1,
+        'mmproj_enabled': False,  # KWT_PRIVATE_MMPROJ_TOGGLE_V3_0 (defaults OFF)
     },
     'pipeline': {'batch_pages': 3, 'batch_raw_mb': 22,  # KWT_UNIFIED_WORKERS_V1_2
                  'ocr_workers': 1, 'translation_workers': 1, 'zip_workers': 1},
@@ -100,6 +101,9 @@ def _validate(section, key, value):
         lo, hi = FLOAT_RULES[(section, key)]
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not lo <= value <= hi:
             raise ValueError(f'{section}.{key}: {lo}~{hi} 범위가 필요합니다.')
+    elif (section, key) == ('gemma', 'mmproj_enabled'):
+        if type(value) is not bool:
+            raise ValueError('gemma.mmproj_enabled: true/false만 허용됩니다.')
     elif (section, key) == ('gemma', 'flash_attention'):
         if value not in ('on', 'off', 'auto'):
             raise ValueError('gemma.flash_attention: on / off / auto 중 선택하세요.')
@@ -123,6 +127,7 @@ def normalize(value):
             raise ValueError(f'{section} 설정이 유효하지 않습니다.')
         missing = set(DEFAULTS[section]) - set(data)
         legacy_keys = ({'ocr_workers','translation_workers','zip_workers'} if section == 'pipeline'
+                       else {'mmproj_enabled'} if section == 'gemma'
                        else set(DEFAULTS[section]) if section in ('ocr','translation','chat','typesetting') else set())
         if set(data) - set(DEFAULTS[section]) or missing - legacy_keys:
             raise ValueError(f'{section} 설정 항목이 누락되었거나 알 수 없는 항목이 있습니다.')

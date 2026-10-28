@@ -2,7 +2,7 @@ import {useCallback,useEffect,useRef,useState} from 'react'
 import {motion,AnimatePresence} from 'motion/react'
 import {api} from './api'
 import UnifiedSettingsTree,{type SettingsGroup} from './UnifiedSettingsTree' // KWT_UNIFIED_RUNTIME_V1 KWT_UNIFIED_NAV_TREE_V1_1
-import {Play,Square,RefreshCw,CheckCircle2,AlertTriangle,Save,FolderOpen,Terminal,Server,ShieldCheck} from 'lucide-react'
+import {Play,Square,RefreshCw,CheckCircle2,AlertTriangle,Save,FolderOpen,Terminal,Server} from 'lucide-react'
 
 // KWT_STUDIO_PREFERENCES_V1_6: persistent local view-only controls.
 const mgrRead=(name:string, fallback:string)=>{try{return window.localStorage.getItem('kwt-studio-manager-'+name)||fallback}catch{return fallback}}
