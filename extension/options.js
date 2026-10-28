@@ -10,7 +10,8 @@ document.getElementById('save').onclick=async()=>{
 (async()=>{
   const box=document.getElementById('kwt-fast-stream');
   const state=document.getElementById('kwt-fast-stream-state');
-  const saved=await chrome.storage.local.get({kwtFastStreamV1:false});
+  // KWT_VIRTUAL_BUBBLE_SAFE_V4_2: default ON only when no user choice is saved.
+  const saved=await chrome.storage.local.get({kwtFastStreamV1:true});
   box.checked=saved.kwtFastStreamV1===true;
   box.addEventListener('change',async()=>{
     box.disabled=true;

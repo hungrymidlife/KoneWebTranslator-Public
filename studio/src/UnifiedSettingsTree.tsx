@@ -17,6 +17,10 @@ type Runtime={
   // KWT_UNIFIED_IMAGE_V1_5
   typesetting:{lama_tile_size:number;lama_tile_context:number;typeset_min_font_size:number;typeset_max_font_size:number;typeset_padding_percent:number;typeset_line_height_ratio:number;output_image_quality:number;zip_compression_level:number;virtual_box_width_percent:number;virtual_box_height_percent:number}
 }
+// KWT_ZIP_V4_GUI_V4_1: settings persisted in the *existing* V4 JSON, not runtime_settings.json.
+type ZipV4={schema_version:number;enabled:boolean;overlap_lama_with_ai:boolean;encode_workers:number;max_inflight_pages:number;poll_interval_seconds:number}
+const V4_DEFAULTS:ZipV4={schema_version:1,enabled:true,overlap_lama_with_ai:true,encode_workers:2,max_inflight_pages:4,poll_interval_seconds:0.35}
+type V4Response={values:ZipV4;defaults:ZipV4;revision:string}
 type Existing={gemma_dir:string;prompt:string;temperature:number;max_tokens:number;ocr_mode:string;patches:number;confidence:number}
 type Props={
   selectedGroup:SettingsGroup
@@ -36,7 +40,7 @@ const DEFAULTS:Runtime={
   ocr:{pad_x_percent:12,pad_y_percent:8},
   translation:{max_region_count:20,max_source_chars:1200,timeout_sec:120,top_k:64,top_p:0.9,min_p:0.05},
   chat:{context_reserve:400,auto_reply_margin:512,summary_batch_messages:4,summary_chunk_budget:1150,summary_output_tokens:700,summary_max_chars:2200,summary_previous_chars:2000,timeout_sec:300,continue_limit:3},
-  typesetting:{lama_tile_size:768,lama_tile_context:72,typeset_min_font_size:8,typeset_max_font_size:72,typeset_padding_percent:4.5,typeset_line_height_ratio:1.24,output_image_quality:92,zip_compression_level:6,virtual_box_width_percent:140,virtual_box_height_percent:125},
+  typesetting:{lama_tile_size:768,lama_tile_context:72,typeset_min_font_size:8,typeset_max_font_size:72,typeset_padding_percent:4.5,typeset_line_height_ratio:1.24,output_image_quality:92,zip_compression_level:6,virtual_box_width_percent:130,virtual_box_height_percent:100},
 }
 const FIELDS=[
   {key:'context_size',label:'모델 컨텍스트 길이',min:2048,max:131072,step:1024},
@@ -102,6 +106,43 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
       else window.sessionStorage.removeItem(DRAFT_KEY)
     }catch{/* session storage may be unavailable */}
   },[runtime,revision,loading,saved])
+  // KWT_ZIP_V4_GUI_V4_1: independent draft and save, compatible with OPTIONS.bat.
+  const [zipV4,setZipV4]=useState<ZipV4>(V4_DEFAULTS)
+  const [zipV4Saved,setZipV4Saved]=useState<ZipV4>(V4_DEFAULTS)
+  const [zipV4Defaults,setZipV4Defaults]=useState<ZipV4>(V4_DEFAULTS)
+  const [zipV4Revision,setZipV4Revision]=useState('')
+  const [zipV4Loading,setZipV4Loading]=useState(true)
+  const [zipV4Saving,setZipV4Saving]=useState(false)
+  const [zipV4Error,setZipV4Error]=useState('')
+  const [zipV4Notice,setZipV4Notice]=useState('')
+  const zipV4Dirty=JSON.stringify(zipV4)!==JSON.stringify(zipV4Saved)
+  const zipV4Mode=!zipV4.enabled?'legacy':zipV4.overlap_lama_with_ai?'overlap':'ai-first'
+  const loadZipV4=useCallback(async()=>{
+    setZipV4Loading(true);setZipV4Error('');setZipV4Notice('')
+    try{
+      const r=await api<V4Response>('/api/manager/zip-v4-settings')
+      setZipV4(r.values);setZipV4Saved(r.values);setZipV4Defaults(r.defaults);setZipV4Revision(r.revision)
+    }catch(e){setZipV4Error(e instanceof Error?e.message:String(e))}
+    finally{setZipV4Loading(false)}
+  },[])
+  useEffect(()=>{if(selectedGroup==='pipeline')void loadZipV4()},[selectedGroup,loadZipV4])
+  const zipV4SetMode=(value:string)=>{
+    setZipV4(prev=>({...prev,enabled:value!=='legacy',overlap_lama_with_ai:value==='legacy'?prev.overlap_lama_with_ai:value==='overlap'}))
+    setZipV4Notice('')
+  }
+  const zipV4Change=(key:'encode_workers'|'max_inflight_pages'|'poll_interval_seconds',value:number)=>{
+    setZipV4(prev=>({...prev,[key]:value}));setZipV4Notice('')
+  }
+  const saveZipV4=async()=>{
+    if(zipV4Loading||zipV4Saving||!zipV4Dirty||!zipV4Revision)return
+    setZipV4Saving(true);setZipV4Error('');setZipV4Notice('')
+    try{
+      const result=await api<{values:ZipV4;revision:string}>('/api/manager/zip-v4-settings',{values:zipV4,__expected_revision:zipV4Revision})
+      setZipV4(result.values);setZipV4Saved(result.values);setZipV4Revision(result.revision)
+      setZipV4Notice('V4 설정 저장 완료. 다음 ZIP 작업부터 반영돼. 기존 배치/작업자 설정은 상단 공통값 저장을 이용해 줘.')
+    }catch(e){setZipV4Error(e instanceof Error?e.message:String(e))}
+    finally{setZipV4Saving(false)}
+  }
   const gemmaChange=(key:keyof Runtime['gemma'],value:number|string)=>{
     setRuntime(prev=>({...prev,gemma:{...prev.gemma,[key]:value}}));setNotice('');setError('')
   }
@@ -180,8 +221,8 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
 
     {selectedGroup==='pipeline'&&<section className="control-card settings-form">
       <div className="kwt-tree-fields">
-        <label>배치 이미지 수<input type="number" min={1} max={20} step={1} value={runtime.pipeline.batch_pages} disabled={loading||saving} onChange={e=>pipelineChange('batch_pages',Number(e.target.value))}/></label>
-        <label>배치 최대 원본 데이터 (MB)<input type="number" min={4} max={22} step={1} value={runtime.pipeline.batch_raw_mb} disabled={loading||saving} onChange={e=>pipelineChange('batch_raw_mb',Number(e.target.value))}/></label>
+        <label>배치 이미지 수<input type="number" min={1} max={20} step={1} value={runtime.pipeline.batch_pages} disabled={loading||saving||zipV4Loading||(!!zipV4Revision&&zipV4.enabled)} onChange={e=>pipelineChange('batch_pages',Number(e.target.value))}/></label>
+        <label>배치 최대 원본 데이터 (MB)<input type="number" min={4} max={22} step={1} value={runtime.pipeline.batch_raw_mb} disabled={loading||saving||zipV4Loading||(!!zipV4Revision&&zipV4.enabled)} onChange={e=>pipelineChange('batch_raw_mb',Number(e.target.value))}/></label>
         {/* KWT_UNIFIED_WORKERS_V1_2: real bounded task pools */}
         <label>OCR 동시 배치 작업 수 (1~2)<input type="number" min={1} max={2} step={1} value={runtime.pipeline.ocr_workers} disabled={loading||saving} onChange={e=>pipelineChange('ocr_workers',Number(e.target.value))}/></label>
         <label>번역 동시 페이지 작업 수 (1~4)<input type="number" min={1} max={4} step={1} value={runtime.pipeline.translation_workers} disabled={loading||saving} onChange={e=>pipelineChange('translation_workers',Number(e.target.value))}/></label>
@@ -190,6 +231,40 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
       <p className="ctl-description">OCR·번역 작업 수는 OCR 서버를 재시작해야 반영돼. ZIP 동시 작업 수는 다음 자동 ZIP 실행부터 적용돼. Hayai 인식 호출은 단일 자식 프로세스 내부에서 안전하게 직렬화돼.</p>
 <p className="ctl-description">Gemma 번역 병렬 처리 성능을 높이려면 AI 서버의 병렬 요청 슬롯(-np)도 함께 늘리고 서버를 재시작해야 해. GPU 메모리 부족 시 작업 수를 1로 되돌려 줘.</p>
       <p className="ctl-description">서버 요청 크기 제한 35 MB를 고려해 배치 원본 크기는 최대 22 MB로 제한해. 설정은 작업 시작 시 고정돼.</p>
+    </section>}
+
+    {/* KWT_ZIP_V4_GUI_V4_1: V4 mode and tuning have their own file and save action. */}
+    {selectedGroup==='pipeline'&&<section className="control-card settings-form">
+      <h2>V4.0 연속 바이너리 번역 파이프라인</h2>
+      <p className="ctl-description">V4.0 엔진의 실제 설정 파일을 사용해. 아래 저장 버튼으로 변경하면 다음 자동 ZIP 작업부터 적용돼. 별도의 OPTIONS.bat도 같은 설정 파일을 사용해.</p>
+      {zipV4Error&&<div className="control-alert error">{zipV4Error}</div>}
+      {zipV4Notice&&<p className="kwt-tree-notice">{zipV4Notice}</p>}
+      <div className="kwt-tree-fields">
+        <label>ZIP 번역 처리 방식
+          <select value={zipV4Mode} disabled={zipV4Loading||zipV4Saving||!zipV4Revision} onChange={e=>zipV4SetMode(e.target.value)}>
+            <option value="overlap">V4 전체 병렬 (OCR·번역 / LaMa·인코딩 동시)</option>
+            <option value="ai-first">V4 AI 우선 (OCR·번역 완료 후 LaMa 시작)</option>
+            <option value="legacy">기존 ZIP 배치 처리 (V4 OFF)</option>
+          </select>
+        </label>
+        <label>CPU 이미지 인코딩 작업자 (1~4)
+          <input type="number" min={1} max={4} step={1} value={zipV4.encode_workers} disabled={zipV4Loading||zipV4Saving||!zipV4Revision||!zipV4.enabled} onChange={e=>zipV4Change('encode_workers',Number(e.target.value))}/>
+        </label>
+        <label>동시 후처리 대기 이미지 (2~8)
+          <input type="number" min={2} max={8} step={1} value={zipV4.max_inflight_pages} disabled={zipV4Loading||zipV4Saving||!zipV4Revision||!zipV4.enabled} onChange={e=>zipV4Change('max_inflight_pages',Number(e.target.value))}/>
+        </label>
+        <label>서버 상태 조회 간격 (초, 0.15~2)
+          <input type="number" min={0.15} max={2} step={0.05} value={zipV4.poll_interval_seconds} disabled={zipV4Loading||zipV4Saving||!zipV4Revision||!zipV4.enabled} onChange={e=>zipV4Change('poll_interval_seconds',Number(e.target.value))}/>
+        </label>
+      </div>
+      <p className="ctl-description">CPU 인코딩은 OCR·번역과 별도로 진행돼. 다만 LaMa는 CUDA 사용 시 GPU를 공유하므로 전체 병렬이 더 느리면 AI 우선으로 비교해 봐. 기존 배치 이미지 수·배치 MB는 V4 OFF일 때만 적용돼.</p>
+      <div className="kwt-tree-bottom">
+        <span aria-live="polite">{zipV4Loading?'V4 설정 확인 중...':zipV4Dirty?'V4 설정에 미저장 변경이 있어.':'V4 설정이 저장된 최신값이야.'}</span>
+        <button className="secondary" disabled={zipV4Loading||zipV4Saving||!zipV4Revision} onClick={()=>{setZipV4({...zipV4Defaults});setZipV4Notice('기본값 입력 완료. 저장을 눌러야 적용돼.')}}>V4 기본값</button>
+        <button className="secondary" disabled={!zipV4Dirty||zipV4Loading||zipV4Saving} onClick={()=>{setZipV4({...zipV4Saved});setZipV4Notice('V4 미저장 변경을 취소했어.')}}>V4 변경 취소</button>
+        <button className="secondary" disabled={zipV4Loading||zipV4Saving} onClick={()=>{if(zipV4Dirty&&!window.confirm('V4 미저장 변경을 취소하고 디스크 값을 불러올까?'))return;void loadZipV4()}}>V4 저장값 다시 불러오기</button>
+        <button className="primary" disabled={!zipV4Dirty||zipV4Loading||zipV4Saving||!zipV4Revision} onClick={()=>void saveZipV4()}>{zipV4Saving?'저장 중...':'V4 설정 저장'}</button>
+      </div>
     </section>}
 
     {selectedGroup==='ocr'&&<section className="control-card settings-form">
@@ -267,7 +342,7 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
           <input type="number" min={100} max={200} step={5} value={runtime.typesetting.virtual_box_height_percent} disabled={loading||saving} onChange={e=>advancedChange('typesetting','virtual_box_height_percent',Number(e.target.value))}/>
         </label>
       </div>
-      <p className="ctl-description">기본값: 가로 140% · 세로 125%. OpenCV 안전 영역 탐지에 성공하면 이를 우선하고, 영역이 좁아 글자를 그릴 수 없으면 가상 영역으로 재시도해. 말풍선 바깥으로 벗어날 가능성도 있으니 우선 작은 ZIP으로 검수해 줘.</p>
+      <p className="ctl-description">기본값: 가로 130% · 세로 100%. KWT_VIRTUAL_BUBBLE_SAFE_V4_2 · 말풍선 판정은 원본 OCR 위치를 기준으로 가상 영역 내부의 안전 공간을 찾고, 성공하면 그 안에 한글을 배치해. 번역문이 맞지 않으면 기존 가상 영역으로 재시도하므로 작은 ZIP에서 결과를 검수해 줘. 이미 저장된 사용자 설정값은 자동으로 바꾸지 않아.</p>
       <h2>자동 식질 및 검수 렌더링</h2>
       <div className="kwt-tree-fields">
         <label>자동 최소 글꼴 크기 (px)<input type="number" min={8} max={48} step={1} value={runtime.typesetting.typeset_min_font_size} disabled={loading||saving} onChange={e=>advancedChange('typesetting','typeset_min_font_size',Number(e.target.value))}/></label>

@@ -117,18 +117,16 @@ def typeset(raw, regions, report=None, text_color_mode='auto', cache_dir=None, r
         style = select_text_style(im, (x+pad, y+pad, max(1,w-2*pad), max(1,h-2*pad)), text_color_mode)
         style['stroke_color'] = '#000000' if style['text_color'] == '#ffffff' else '#ffffff'
         # KWT_VIRTUAL_OCR_BOX_V1_8: OCR removal bbox remains untouched.
-        from bubble_safe_layout import propose_safe_bbox
+        # KWT_VIRTUAL_BUBBLE_SAFE_V4_2: OCR-anchored bubble selection constrained to virtual layout.
+        from bubble_safe_layout_v2 import propose_safe_bbox
         from virtual_typesetting_box import virtual_bbox, drawn_bbox
         ocr_box = [x,y,w,h]
         virtual_box = virtual_bbox(ocr_box, im.size, render_cfg)
         enlarged = virtual_box != ocr_box
         # OpenCV sees the expanded candidate, NOT the raw Japanese OCR rectangle.
-        safe_box, layout_reason = propose_safe_bbox(im, virtual_box)
-        if enlarged and safe_box is not None:
-            # Reject an over-restrictive safe mask; it should not undo enlargement.
-            if safe_box[2] < w or safe_box[3] < h:
-                safe_box = None
-                layout_reason += '_too_small_for_ocr'
+        # Search the cleaned image with OCR as the bubble anchor. A safe bubble
+        # may legitimately be narrower than the original OCR rectangle.
+        safe_box, layout_reason = propose_safe_bbox(im, virtual_box, seed_bbox=ocr_box)
         target_box = list(safe_box or virtual_box)
         info = layout_and_draw(draw, translated, target_box, font_for, style, render_cfg=render_cfg)
         if info is None and safe_box is not None:
@@ -347,3 +345,16 @@ def process_zip(source, output_dir, report=lambda *args: None, cancelled=lambda:
     finally:
         if temp_target.exists():
             temp_target.unlink()
+
+# KWT_ZIP_CONTINUOUS_STREAM_V4_0 — opt-out wrapper; original function kept intact.
+_kwt_zip_v4_legacy_process_zip = process_zip
+
+def process_zip(source, output_dir, report=lambda *args: None, cancelled=lambda: False,
+                progress=None, text_color_mode='auto'):
+    from zip_pipeline_v4 import load_settings, process_zip_continuous
+    if load_settings()['enabled']:
+        return process_zip_continuous(source, output_dir, report=report, cancelled=cancelled,
+                                      progress=progress, text_color_mode=text_color_mode)
+    return _kwt_zip_v4_legacy_process_zip(source, output_dir, report=report,
+                                           cancelled=cancelled, progress=progress,
+                                           text_color_mode=text_color_mode)
