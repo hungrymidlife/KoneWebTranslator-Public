@@ -1,5 +1,6 @@
 import {useCallback,useEffect,useRef,useState} from 'react'
 import {motion,AnimatePresence} from 'motion/react'
+import {createPortal} from 'react-dom' // KWT_SERVER_STOP_CONFIRM_V1
 import {api} from './api'
 import UnifiedSettingsTree,{type SettingsGroup} from './UnifiedSettingsTree' // KWT_UNIFIED_RUNTIME_V1 KWT_UNIFIED_NAV_TREE_V1_1
 import {Play,Square,RefreshCw,CheckCircle2,AlertTriangle,Save,FolderOpen,Terminal,Server} from 'lucide-react'
@@ -40,6 +41,8 @@ export default function ControlCenter({section,settingsGroup,status,onStatusRefr
   const [busy,setBusy]=useState('')
   const [message,setMessage]=useState('')
   const [error,setError]=useState('')
+  // KWT_SERVER_STOP_CONFIRM_V1: explicit decision replaces unreliable WebView confirm()
+  const [pendingStopServer,setPendingStopServer]=useState<'gemma'|'ocr'|null>(null)
   useEffect(()=>mgrWrite('mode',mode),[mode])
   const [lines,setLines]=useState<LogLine[]>([])
   const lastLog=useRef(0)
@@ -84,10 +87,31 @@ export default function ControlCenter({section,settingsGroup,status,onStatusRefr
   const start=(server:'gemma'|'ocr')=>run(`${server==='gemma'?'Gemma':'OCR'} 시작`,async()=>{
     await api('/api/manager/start',{server,mode});
   })
+  // KWT_SERVER_STOP_CONFIRM_V1: opening a modal MUST NOT issue the stop request.
   const stop=(server:'gemma'|'ocr')=>{
-    if(!window.confirm(`Studio가 시작한 ${server==='gemma'?'Gemma':'OCR'} 서버를 종료할까요? 진행 중인 작업이 중단될 수 있습니다.`))return
-    void run('서버 종료',async()=>{await api('/api/manager/stop',{server})})
+    if(busy)return
+    setPendingStopServer(server)
   }
+  const confirmServerStop=async()=>{
+    if(!pendingStopServer||busy)return
+    const server=pendingStopServer
+    setPendingStopServer(null) // block double-submit before any async work
+    if(!status?.[server].owned){
+      setError('현재 Studio가 시작한 서버가 아닙니다. 상태를 새로고침한 후 확인하세요.')
+      return
+    }
+    await run(`${server==='gemma'?'Gemma':'OCR'} 서버 종료`,async()=>{
+      await api('/api/manager/stop',{server})
+    })
+  }
+  useEffect(()=>{
+    if(!pendingStopServer)return
+    const cancelOnEscape=(event:KeyboardEvent)=>{
+      if(event.key==='Escape'){event.preventDefault();setPendingStopServer(null)}
+    }
+    window.addEventListener('keydown',cancelOnEscape)
+    return()=>window.removeEventListener('keydown',cancelOnEscape)
+  },[pendingStopServer])
   const browseGemma=async()=>{
     try{
       const {isTauri}=await import('@tauri-apps/api/core')
@@ -139,5 +163,19 @@ export default function ControlCenter({section,settingsGroup,status,onStatusRefr
       {section==='logs'&&<section className="control-card log-card"><div className="row-spread"><div><h2><Terminal size={19}/>Gemma / OCR 실행 로그</h2><p className="ctl-description">Studio가 직접 시작한 서버의 콘솔 출력과 작업 관리 이벤트를 보여줘. 이미 외부에서 실행된 서버의 콘솔은 읽을 수 없어.</p></div><label className="check-label"><input type="checkbox" checked={autoScroll} onChange={e=>setAutoScroll(e.target.checked)}/>자동 스크롤</label></div><div className="console-full scroll">{lines.map(l=><div key={l.seq}><time>{l.time}</time> {l.message}</div>)}<div ref={logEnd}/></div><div className="row-spread"><span className="muted">최근 {lines.length}개 표시 · 서버당 로그 스트림 통합</span><button className="secondary" onClick={()=>{setLines([]);lastLog.current=0}}>로그 다시 불러오기</button></div></section>}
       {section==='settings'&&<UnifiedSettingsTree selectedGroup={settingsGroup} legacy={settings} updateLegacy={patch} saveLegacy={kind=>{void save(kind)}} ready={ready} mode={mode} setMode={setMode} browseGemma={browseGemma} gemmaOnline={Boolean(status?.gemma.online)}/>}
     </motion.div></AnimatePresence>
+    {/* KWT_SERVER_STOP_CONFIRM_V1: React-managed confirmation, independent of window.confirm. */}
+    {pendingStopServer&&createPortal(
+      <div className="kwt-bridge-restart-backdrop kwt-server-stop-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)setPendingStopServer(null)}}>
+        <div className="kwt-bridge-restart-dialog kwt-server-stop-dialog" role="dialog" aria-modal="true" aria-labelledby="kwt-server-stop-title" aria-describedby="kwt-server-stop-description">
+          <h3 id="kwt-server-stop-title">{pendingStopServer==='gemma'?'Gemma':'OCR'} 서버를 종료할까요?</h3>
+          <p id="kwt-server-stop-description">Studio가 시작한 {pendingStopServer==='gemma'?'Gemma 번역':'Hayai OCR'} 서버만 종료합니다. 현재 실행 중인 작업이 있다면 중단될 수 있습니다.</p>
+          <p className="kwt-server-stop-note">외부에서 실행한 서버는 종료하지 않습니다.</p>
+          <div className="kwt-bridge-restart-actions">
+            <button type="button" onClick={()=>setPendingStopServer(null)} disabled={!!busy}>취소</button>
+            <button type="button" className="kwt-server-stop-confirm" onClick={()=>void confirmServerStop()} disabled={!!busy}>서버 종료</button>
+          </div>
+        </div>
+      </div>,document.body
+    )}
   </main>
 }

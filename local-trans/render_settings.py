@@ -19,9 +19,13 @@ DEFAULTS = {
     'output_image_quality': 92,
     'zip_compression_level': 6,
     # KWT_VIRTUAL_OCR_BOX_V1_8: separate OCR bbox and Korean layout bbox.
-    # KWT_VIRTUAL_BUBBLE_SAFE_V4_2 · default width 130%, height 100%.
-    'virtual_box_width_percent': 130,
+    # KWT_VIRTUAL_BUBBLE_SAFE_V4_2 · default width 100%, height 100%.
+    'virtual_box_width_percent': 100,
     'virtual_box_height_percent': 100,
+    # KWT_SHAPE_FONT_V1: categories default to existing library font.
+    'shape_font_policy_enabled': True,
+    'font_id_round_bubble':'default', 'font_id_rect_box':'default',
+    'font_id_no_bubble':'default', 'font_id_unknown':'default',
 }
 INTEGER_RANGES = {
     'lama_tile_size': (512, 1024),
@@ -40,13 +44,24 @@ FLOAT_RANGES = {
 
 def validate(value):
     # Old ZIP metadata can contain a full V1.5 profile without virtual boxes.
-    optional = {'virtual_box_width_percent', 'virtual_box_height_percent'}
+    optional = {'virtual_box_width_percent', 'virtual_box_height_percent',
+                'shape_font_policy_enabled', 'font_id_round_bubble',
+                'font_id_rect_box', 'font_id_no_bubble','font_id_unknown'}
     if not isinstance(value, dict) or set(value) - set(DEFAULTS) or set(DEFAULTS) - set(value) - optional:
         raise ValueError('이미지/식질 설정의 키가 올바르지 않습니다.')
     normalized = {}
     for key, default in DEFAULTS.items():
         item = value.get(key, default)
-        if key in INTEGER_RANGES:
+        if key == 'shape_font_policy_enabled':
+            if type(item) is not bool:
+                raise ValueError('유형별 폰트 사용 설정은 true/false여야 합니다.')
+            normalized[key]=item
+        elif key.startswith('font_id_'):
+            from shape_font_policy import valid_policy_font
+            if not valid_policy_font(item):
+                raise ValueError(f'{key}: 등록 폰트 ID 또는 default/system만 허용됩니다.')
+            normalized[key]=item
+        elif key in INTEGER_RANGES:
             a, b = INTEGER_RANGES[key]
             if type(item) is not int or not a <= item <= b:
                 raise ValueError(f'이미지/식질 {key}: {a}~{b} 정수가 필요합니다.')

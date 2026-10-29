@@ -40,7 +40,10 @@ DEFAULTS = {
                     'output_image_quality': 92, 'zip_compression_level': 6,
                     # KWT_VIRTUAL_OCR_BOX_V1_8
                     # KWT_VIRTUAL_BUBBLE_SAFE_V4_2
-                    'virtual_box_width_percent': 130, 'virtual_box_height_percent': 100},
+                    'virtual_box_width_percent': 100, 'virtual_box_height_percent': 100,
+                    'shape_font_policy_enabled': True,
+                    'font_id_round_bubble':'default', 'font_id_rect_box':'default',
+                    'font_id_no_bubble':'default', 'font_id_unknown':'default'},
     'chat': {'context_reserve': 400, 'auto_reply_margin': 512, 'summary_batch_messages': 4,
              'summary_chunk_budget': 1150, 'summary_output_tokens': 700,
              'summary_max_chars': 2200, 'summary_previous_chars': 2000,
@@ -101,6 +104,14 @@ def _validate(section, key, value):
         lo, hi = FLOAT_RULES[(section, key)]
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not lo <= value <= hi:
             raise ValueError(f'{section}.{key}: {lo}~{hi} 범위가 필요합니다.')
+    elif (section,key) == ('typesetting','shape_font_policy_enabled'):
+        if type(value) is not bool:
+            raise ValueError('typesetting.shape_font_policy_enabled: true/false만 허용됩니다.')
+    elif section=='typesetting' and key.startswith('font_id_'):
+        import re
+        if type(value) is not str or not (
+                value in ('default','system') or re.fullmatch(r'[0-9a-f]{20}',value)):
+            raise ValueError(f'typesetting.{key}: 올바른 폰트 ID가 아닙니다.')
     elif (section, key) == ('gemma', 'mmproj_enabled'):
         if type(value) is not bool:
             raise ValueError('gemma.mmproj_enabled: true/false만 허용됩니다.')

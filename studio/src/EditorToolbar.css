@@ -1,0 +1,88 @@
+
+/* KWT_EDITOR_TOOLBAR_V2: fixed two-row layout with explicit responsive overflow. */
+.document-toolbar.kwt-editor-toolbar-v2{
+  container: kwt-editor-toolbar / inline-size;
+  position:relative;
+  z-index:46;
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  justify-content:center;
+  gap:7px;
+  height:auto !important;
+  min-height:98px;
+  padding:9px 13px;
+  overflow:visible;
+  isolation:isolate;
+}
+.kwt-editor-toolbar-v2 .kwt-toolbar-meta-v2{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;min-height:26px;
+}
+.document-toolbar.kwt-editor-toolbar-v2 .doc-label{display:flex;flex:1 1 auto;min-width:0;max-width:none;}
+.kwt-editor-toolbar-v2 .kwt-toolbar-title-v2{display:flex;flex-direction:column;min-width:0;flex:1 1 auto;overflow:hidden;}
+.kwt-editor-toolbar-v2 .doc-label b{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.document-toolbar.kwt-editor-toolbar-v2 .page-nav{flex:0 0 auto;white-space:nowrap;}
+.document-toolbar.kwt-editor-toolbar-v2 .toolbar-actions.kwt-toolbar-actions-v2{
+  display:flex;flex:0 0 auto;align-items:center;justify-content:flex-start;gap:8px;
+  min-width:0;width:100%;overflow:visible;
+}
+.kwt-toolbar-main-v2,.kwt-toolbar-views-v2,.kwt-toolbar-undo-v2{display:flex;align-items:center;gap:5px;min-width:0;}
+.kwt-toolbar-main-v2{flex:0 0 auto;}
+.kwt-toolbar-views-v2{flex:1 1 auto;justify-content:flex-end;}
+.kwt-toolbar-views-v2 .view-switch{flex:0 0 auto;}
+.kwt-toolbar-main-v2 button,.kwt-toolbar-views-v2 button,.kwt-toolbar-more-v2{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  min-height:34px;min-width:34px;flex-shrink:0;
+  padding:7px 10px;line-height:1.2;
+  white-space:nowrap !important;word-break:keep-all !important;overflow-wrap:normal !important;
+}
+.kwt-toolbar-undo-v2{gap:3px;}
+.kwt-toolbar-undo-v2 button{min-width:34px;width:34px;height:34px;padding:7px;}
+.kwt-toolbar-views-v2 .view-switch button{min-height:29px;}
+.kwt-toolbar-text-v2{white-space:nowrap;word-break:keep-all;}
+.kwt-toolbar-overflow-v2{position:relative;z-index:55;flex:0 0 auto;}
+.kwt-toolbar-more-v2.selected{border-color:#62a6cd;background:#2a4560;}
+.kwt-toolbar-menu-v2{
+  position:absolute;top:calc(100% + 8px);right:0;z-index:100;
+  padding:7px;width:max-content;min-width:225px;max-width:min(290px,calc(100vw - 20px));
+  border:1px solid #43556a;border-radius:10px;
+  background:#192432;box-shadow:0 14px 36px #000c;
+}
+.kwt-toolbar-menu-v2>button,.kwt-toolbar-menu-v2 .kwt-toolbar-toggle-v2,.kwt-toolbar-compact-v2>button{
+  display:flex;align-items:center;justify-content:flex-start;gap:9px;
+  width:100%;min-height:36px;padding:8px 10px;
+  border:0;border-radius:7px;background:transparent;color:#d8e6f2;
+  font-size:12px;text-align:left;white-space:nowrap;word-break:keep-all;
+}
+.kwt-toolbar-menu-v2 button:hover:not(:disabled),.kwt-toolbar-menu-v2 .kwt-toolbar-toggle-v2:hover{
+  background:#2a3c50;
+}
+.kwt-toolbar-toggle-v2{cursor:pointer;}
+.kwt-toolbar-toggle-v2 input{width:15px;height:15px;flex:0 0 auto;}
+.kwt-toolbar-compact-v2{display:none;border-top:1px solid #35465b;margin-top:6px;padding-top:6px;}
+.kwt-toolbar-menu-caption-v2{display:block;font-size:11px;font-weight:700;color:#96b6cc;padding:5px 9px;}
+.kwt-toolbar-compact-v2>button.selected{background:#29475e;color:#fff;}
+.kwt-editor-toolbar-v2 button:focus-visible,.kwt-toolbar-toggle-v2:focus-within{outline:2px solid #72cafa;outline-offset:2px;}
+@container kwt-editor-toolbar (max-width: 805px){
+  .kwt-toolbar-views-v2{display:none;}
+  .kwt-toolbar-compact-v2{display:block;}
+  .kwt-toolbar-actions-v2{justify-content:space-between !important;}
+  .kwt-toolbar-overflow-v2{margin-left:auto;}
+}
+@container kwt-editor-toolbar (max-width: 430px){
+  .kwt-toolbar-main-v2 .kwt-toolbar-text-v2{display:none;}
+  .kwt-toolbar-main-v2>button{min-width:36px;width:36px;padding:7px;}
+  .kwt-toolbar-undo-v2 button{width:33px;min-width:33px;}
+  .kwt-toolbar-more-v2{min-width:72px;}
+}
+/* Fullscreen's older 44px !important rule must not collapse the toolbar. */
+.workspace.kwt-editor-focus .document-toolbar.kwt-editor-toolbar-v2{
+  height:auto !important;min-height:90px;padding:8px 11px;
+}
+.workspace.kwt-editor-focus .kwt-toolbar-views-v2 .view-switch{display:flex;}
+
+/* KWT_PILLOW_BULK_V1: compact grouped control in responsive tools menu. */
+.kwt-toolbar-menu-divider-v2{height:1px;background:#35465b;margin:7px 6px 5px;}
+.kwt-toolbar-menu-state-v2{display:block;color:#91afc4;font-size:10px;line-height:1.5;}
+.kwt-toolbar-menu-note-v2{padding:0 10px 8px;color:#8ea9c0;font-size:10px;line-height:1.45;}
+.kwt-toolbar-menu-v2 .kwt-toolbar-toggle-v2:has(input:disabled){opacity:.45;cursor:default;}

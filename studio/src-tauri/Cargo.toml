@@ -14,5 +14,5 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] } # KWT_STUDIO_TRAY_V1
 tauri-plugin-dialog = "2"

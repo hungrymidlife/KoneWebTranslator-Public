@@ -1,7 +1,7 @@
 // KWT_UNIFIED_NAV_TREE_V1_1: left-sidebar tree navigation, right-side single settings page.
 // V1 runtime settings and original manager settings API remain unchanged.
 import {useCallback,useEffect,useState} from 'react'
-import {api} from './api'
+import {api,type FontLibrary} from './api'
 import ChatConversationSettings from './ChatConversationSettings' // KWT_UNIFIED_CHAT_V1_4
 
 export type SettingsGroup='overview'|'gemma'|'pipeline'|'ocr'|'translation'|'chat'|'typesetting'
@@ -15,7 +15,7 @@ type Runtime={
   translation:{max_region_count:number;max_source_chars:number;timeout_sec:number;top_k:number;top_p:number;min_p:number}
   chat:{context_reserve:number;auto_reply_margin:number;summary_batch_messages:number;summary_chunk_budget:number;summary_output_tokens:number;summary_max_chars:number;summary_previous_chars:number;timeout_sec:number;continue_limit:number}
   // KWT_UNIFIED_IMAGE_V1_5
-  typesetting:{lama_tile_size:number;lama_tile_context:number;typeset_min_font_size:number;typeset_max_font_size:number;typeset_padding_percent:number;typeset_line_height_ratio:number;output_image_quality:number;zip_compression_level:number;virtual_box_width_percent:number;virtual_box_height_percent:number}
+  typesetting:{lama_tile_size:number;lama_tile_context:number;typeset_min_font_size:number;typeset_max_font_size:number;typeset_padding_percent:number;typeset_line_height_ratio:number;output_image_quality:number;zip_compression_level:number;virtual_box_width_percent:number;virtual_box_height_percent:number;shape_font_policy_enabled:boolean;font_id_round_bubble:string;font_id_rect_box:string;font_id_no_bubble:string;font_id_unknown:string}
 }
 // KWT_ZIP_V4_GUI_V4_1: settings persisted in the *existing* V4 JSON, not runtime_settings.json.
 type ZipV4={schema_version:number;enabled:boolean;overlap_lama_with_ai:boolean;encode_workers:number;max_inflight_pages:number;poll_interval_seconds:number}
@@ -40,7 +40,7 @@ const DEFAULTS:Runtime={
   ocr:{pad_x_percent:12,pad_y_percent:8},
   translation:{max_region_count:20,max_source_chars:1200,timeout_sec:120,top_k:64,top_p:0.9,min_p:0.05},
   chat:{context_reserve:400,auto_reply_margin:512,summary_batch_messages:4,summary_chunk_budget:1150,summary_output_tokens:700,summary_max_chars:2200,summary_previous_chars:2000,timeout_sec:300,continue_limit:3},
-  typesetting:{lama_tile_size:768,lama_tile_context:72,typeset_min_font_size:8,typeset_max_font_size:72,typeset_padding_percent:4.5,typeset_line_height_ratio:1.24,output_image_quality:92,zip_compression_level:6,virtual_box_width_percent:130,virtual_box_height_percent:100},
+  typesetting:{lama_tile_size:768,lama_tile_context:72,typeset_min_font_size:8,typeset_max_font_size:72,typeset_padding_percent:4.5,typeset_line_height_ratio:1.24,output_image_quality:92,zip_compression_level:6,virtual_box_width_percent:100,virtual_box_height_percent:100,shape_font_policy_enabled:true,font_id_round_bubble:'default',font_id_rect_box:'default',font_id_no_bubble:'default',font_id_unknown:'default'},
 }
 const FIELDS=[
   {key:'context_size',label:'모델 컨텍스트 길이',min:2048,max:131072,step:1024},
@@ -70,6 +70,19 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
   const [saved,setSaved]=useState<Runtime>(DEFAULTS)
   const [defaults,setDefaults]=useState<Runtime>(DEFAULTS)
   const [revision,setRevision]=useState('')
+  // KWT_SHAPE_FONT_V1: font choices use the same registered library as Studio.
+  const [shapeFonts,setShapeFonts]=useState<FontLibrary>({default_id:'system',fonts:[]})
+  useEffect(()=>{
+    if(selectedGroup!=='typesetting')return
+    void api<FontLibrary>('/api/fonts').then(setShapeFonts)
+      .catch(()=>setShapeFonts({default_id:'system',fonts:[]}))
+  },[selectedGroup])
+  const shapeFontChoices=[
+    {key:'font_id_round_bubble',label:'둥근 말풍선'},
+    {key:'font_id_rect_box',label:'사각형·내레이션 박스'},
+    {key:'font_id_no_bubble',label:'말풍선 없는 영역'},
+    {key:'font_id_unknown',label:'판정 불확실'}
+  ] as const
   const [loading,setLoading]=useState(true)
   const [saving,setSaving]=useState(false)
   const [error,setError]=useState('')
@@ -149,7 +162,7 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
   const pipelineChange=(key:keyof Runtime['pipeline'],value:number)=>{
     setRuntime(prev=>({...prev,pipeline:{...prev.pipeline,[key]:value}}));setNotice('');setError('')
   }
-  const advancedChange=(section:'ocr'|'translation'|'chat'|'typesetting',key:string,value:number)=>{
+  const advancedChange=(section:'ocr'|'translation'|'chat'|'typesetting',key:string,value:number|string|boolean)=>{
     setRuntime(prev=>({...prev,[section]:{...prev[section],[key]:value}}));setNotice('');setError('')
   }
   const save=async()=>{
@@ -345,7 +358,26 @@ export default function UnifiedSettingsTree({selectedGroup,legacy,updateLegacy,s
           <input type="number" min={100} max={200} step={5} value={runtime.typesetting.virtual_box_height_percent} disabled={loading||saving} onChange={e=>advancedChange('typesetting','virtual_box_height_percent',Number(e.target.value))}/>
         </label>
       </div>
-      <p className="ctl-description">기본값: 가로 130% · 세로 100%. KWT_VIRTUAL_BUBBLE_SAFE_V4_2 · 말풍선 판정은 원본 OCR 위치를 기준으로 가상 영역 내부의 안전 공간을 찾고, 성공하면 그 안에 한글을 배치해. 번역문이 맞지 않으면 기존 가상 영역으로 재시도하므로 작은 ZIP에서 결과를 검수해 줘. 이미 저장된 사용자 설정값은 자동으로 바꾸지 않아.</p>
+      <p className="ctl-description">기본값: 가로 100% · 세로 100%. KWT_VIRTUAL_BUBBLE_SAFE_V4_2 · 말풍선 판정은 원본 OCR 위치를 기준으로 가상 영역 내부의 안전 공간을 찾고, 성공하면 그 안에 한글을 배치해. 번역문이 맞지 않으면 기존 가상 영역으로 재시도하므로 작은 ZIP에서 결과를 검수해 줘. 이미 저장된 사용자 설정값은 자동으로 바꾸지 않아.</p>
+      <h2>말풍선 유형별 자동 폰트</h2>
+      <p className="ctl-description">새 ZIP 자동 처리에서는 복원된 배경의 윤곽을 분석해 글꼴을 선택합니다. 영역이 애매하면 '판정 불확실' 폰트를 사용합니다. '현재 기본 폰트 유지'를 선택하면 기존 서체가 유지됩니다.</p>
+      <label className="mini-check" style={{display:'flex',alignItems:'center',gap:9,marginBottom:12}}>
+        <input type="checkbox" checked={runtime.typesetting.shape_font_policy_enabled} disabled={loading||saving}
+          onChange={e=>advancedChange('typesetting','shape_font_policy_enabled',e.target.checked)}/>
+        말풍선 유형별 폰트 자동 선택 사용
+      </label>
+      <div className="kwt-tree-fields">
+        {shapeFontChoices.map(item=><label key={item.key}>{item.label}
+          <select value={runtime.typesetting[item.key]} disabled={loading||saving||!runtime.typesetting.shape_font_policy_enabled}
+            onChange={e=>advancedChange('typesetting',item.key,e.target.value)}>
+            <option value="default">현재 기본 폰트 유지</option>
+            {shapeFonts.fonts.map(font=><option key={font.id} value={font.id}>{font.name}{font.id===shapeFonts.default_id?' (현재 기본)':''}</option>)}
+            {runtime.typesetting[item.key]!=='default'&&!shapeFonts.fonts.some(font=>font.id===runtime.typesetting[item.key])&&
+              <option value={runtime.typesetting[item.key]}>등록되지 않은 폰트 (대체 표시)</option>}
+          </select>
+        </label>)}
+      </div>
+      <p className="ctl-description">폰트 관리에서 추가한 글꼴을 선택하세요. 다음 ZIP 자동 처리부터 적용되며, 이미 번역한 ZIP은 기존 서체를 유지합니다. 검수탭에서 개별 박스의 유형과 서체를 변경할 수 있습니다.</p>
       <h2>자동 식질 및 검수 렌더링</h2>
       <div className="kwt-tree-fields">
         <label>자동 최소 글꼴 크기 (px)<input type="number" min={8} max={48} step={1} value={runtime.typesetting.typeset_min_font_size} disabled={loading||saving} onChange={e=>advancedChange('typesetting','typeset_min_font_size',Number(e.target.value))}/></label>

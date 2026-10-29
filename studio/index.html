@@ -1,1 +1,101 @@
-<!doctype html><html lang="ko"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>KoneWebTranslator Studio</title></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>
+<!doctype html><html lang="ko"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>KoneWebTranslator Studio</title></head><body><div id="root"></div>
+<script>
+/* KWT_STUDIO_COLDBOOT_RECOVERY_V1: independent of Vite module graph */
+(function () {
+  'use strict';
+  var root = document.getElementById('root');
+  if (!root) return;
+  var key = 'kwt-studio-coldboot-reload-v1';
+  var dev = /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
+  var errors = [];
+  var overlay = null;
+  var attempts = 0;
+  var storageOK = false;
+  try {
+    attempts = Math.max(0, Math.min(2, parseInt(sessionStorage.getItem(key) || '0', 10) || 0));
+    storageOK = true;
+  } catch (_) { /* private mode/storage blocked: do not auto-reload repeatedly */ }
+  var good = false;
+  var timer = null;
+  var observer;
+  function isReady() { return !!root.firstElementChild || !!root.textContent.trim(); }
+  function clear() {
+    good = true;
+    if (timer) clearTimeout(timer);
+    if (observer) observer.disconnect();
+    if (overlay) overlay.remove();
+    try { sessionStorage.removeItem(key); } catch (_) { }
+  }
+  function addError(what) {
+    var detail = String(what || '알 수 없는 오류').slice(0, 280);
+    if (errors.indexOf(detail) < 0) errors.push(detail);
+    if (errors.length > 5) errors.shift();
+  }
+  window.addEventListener('error', function (ev) {
+    var target = ev.target;
+    if (target && target !== window && (target.src || target.href)) {
+      addError('리소스 로드 실패: ' + (target.src || target.href));
+    } else if (ev.message) {
+      addError(ev.message + (ev.filename ? ' @ ' + ev.filename.split('/').pop() : ''));
+    }
+  }, true);
+  window.addEventListener('unhandledrejection', function (ev) {
+    addError('JavaScript 요청 실패: ' + (ev.reason && (ev.reason.message || String(ev.reason))));
+  });
+  function show(final) {
+    if (good || isReady()) { clear(); return; }
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'kwt-studio-boot-recovery';
+      overlay.setAttribute('role', 'status');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:#101824;color:#e9f0fa;font:14px/1.65 system-ui,sans-serif;padding:24px;box-sizing:border-box';
+      var card = document.createElement('section');
+      card.style.cssText = 'width:min(560px,100%);background:#1a293b;border:1px solid #35506d;border-radius:14px;padding:26px;box-sizing:border-box;box-shadow:0 16px 45px #0006';
+      var title = document.createElement('h2');
+      title.style.cssText = 'font-size:18px;margin:0 0 8px';
+      title.textContent = 'KoneWebTranslator Studio';
+      var msg = document.createElement('p');
+      msg.id = 'kwt-boot-msg';
+      msg.style.cssText = 'margin:0 0 12px;color:#bed0e4';
+      card.appendChild(title);
+      card.appendChild(msg);
+      var detail = document.createElement('pre');
+      detail.id = 'kwt-boot-details';
+      detail.style.cssText = 'white-space:pre-wrap;overflow-wrap:anywhere;color:#ffcb98;background:#111e2b;padding:12px;border-radius:8px;max-height:170px;overflow:auto;display:none;font:12px/1.5 monospace';
+      card.appendChild(detail);
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = '화면 다시 불러오기';
+      btn.style.cssText = 'background:#417db8;color:white;border:0;border-radius:8px;padding:9px 15px;cursor:pointer';
+      btn.onclick = function () { try { sessionStorage.removeItem(key); } catch (_) {} location.reload(); };
+      card.appendChild(btn);
+      overlay.appendChild(card);
+      document.body.appendChild(overlay);
+    }
+    var msgEl = document.getElementById('kwt-boot-msg');
+    var detailEl = document.getElementById('kwt-boot-details');
+    if (msgEl) msgEl.textContent = final ?
+      '첫 화면을 불러오지 못했습니다. 자동 재시도는 중단했어요. 아래 오류를 확인하거나 화면을 수동으로 다시 불러오세요.' :
+      '패치 직후 첫 실행으로 프런트엔드 모듈을 준비하고 있습니다. 화면이 뜨지 않으면 자동으로 다시 불러옵니다.';
+    if (detailEl && errors.length) {
+      detailEl.style.display = 'block';
+      detailEl.textContent = errors.join('\n');
+    }
+  }
+  if (isReady()) { clear(); return; }
+  observer = new MutationObserver(function () { if (!good && isReady()) clear(); });
+  observer.observe(root, {childList:true,subtree:true,characterData:true});
+  setTimeout(function () { if (!good) show(false); }, 1200);
+  timer = setTimeout(function () {
+    if (good || isReady()) { clear(); return; }
+    if (dev && storageOK && attempts < 2) {
+      try { sessionStorage.setItem(key, String(attempts + 1)); } catch (_) { show(true); return; }
+      location.reload();
+      return;
+    }
+    show(true);
+  }, 8000);
+})();
+
+</script>
+<script type="module" src="/src/main.tsx"></script></body></html>

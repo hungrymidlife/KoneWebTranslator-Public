@@ -6,6 +6,16 @@ from PIL import ImageFont
 from render_settings import load_render_settings  # KWT_UNIFIED_IMAGE_V1_5
 
 
+def compact_auto_text(text):
+    """Remove empty translated paragraphs from *automatic* layout only.
+
+    A newline separates adjacent rows, not a second invisible empty row.
+    User-entered blank rows in manual mode still use _lines() unchanged.
+    """
+    normalized = str(text).replace('\r\n', '\n').replace('\r', '\n')
+    return '\n'.join(line.strip() for line in normalized.split('\n') if line.strip())
+
+
 def _lines(draw, text, font, max_width, stroke):
     """Wrap left-to-right; prefer spaces, but break oversized Korean words by glyph."""
     result = []
@@ -48,6 +58,7 @@ def layout_and_draw(draw, text, bounds, font_for, style, prefer_vertical=None, r
     Choose the largest fitting font; keep glyph aspect ratios unchanged.
     """
     render_cfg = render_cfg if render_cfg is not None else load_render_settings()
+    text = compact_auto_text(text)
     x, y, w, h = [int(v) for v in bounds]
     if w <= 0 or h <= 0 or not str(text).strip():
         return None
@@ -61,7 +72,12 @@ def layout_and_draw(draw, text, bounds, font_for, style, prefer_vertical=None, r
                       render_cfg['typeset_min_font_size'] - 1, -1):
         font = font_for(size)
         stroke = max(1, min(3, 1 if size <= 18 else 2 if size <= 34 else 3))
-        lines = _lines(draw, text, font, inner_w, stroke)
+        # Experimental bounded dynamic-programming line balance. Never increase
+        # line count versus greedy, preserving the previous max-font fit bound.
+        greedy = _lines(draw, text, font, inner_w, stroke)
+        from smart_linebreak import balanced_lines
+        proposal = balanced_lines(draw, text, font, inner_w, stroke) if greedy else None
+        lines = proposal if proposal and len(proposal) <= len(greedy) else greedy
         if not lines:
             continue
         line_h = max(size + stroke * 2 + 2, round(size * render_cfg['typeset_line_height_ratio']) + stroke * 2)

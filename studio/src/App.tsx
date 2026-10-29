@@ -1,7 +1,12 @@
-import {useCallback,useEffect,useRef,useState} from 'react'
+import {useCallback,useEffect,useRef,useState,type ReactNode} from 'react'
+import {createPortal} from 'react-dom' // KWT_FOCUS_DIALOG_PORTAL_V1
 import {motion,AnimatePresence} from 'motion/react'
-import {FolderOpen,Play,ChevronLeft,ChevronRight,Save,Layers3,Eye,EyeOff,RefreshCw,Check,AlertCircle,Maximize2,PanelLeftClose,PanelLeftOpen,Search,Clock,Image as ImageIcon,Puzzle} from 'lucide-react'
+import {Undo2,Redo2,FolderOpen,Play,ChevronLeft,ChevronRight,Save,Layers3,Eye,EyeOff,RefreshCw,Check,AlertCircle,Maximize2,Archive,Minus,Square,X,PanelLeftClose,PanelLeftOpen,Search,Clock,Image as ImageIcon,Puzzle} from 'lucide-react'
 import EditorCanvas from './EditorCanvas'
+import EditorToolbar from './EditorToolbar' // KWT_EDITOR_TOOLBAR_V2
+import ProofPreview from './ProofPreview'
+import {usePillowProof} from './usePillowProof' // KWT_EXP_EDITOR_RENDER_V2
+import MaskBrushEditor, {type MaskStroke} from './MaskBrushEditor' // EXP_MANGA_V2_MASK // EXP_MANGA_V2_EXACT_PREVIEW
 import ControlCenter,{StatusDots,useEngineStatus,type StudioSection} from './ControlCenter'
 import type {SettingsGroup} from './UnifiedSettingsTree' // KWT_UNIFIED_NAV_TREE_V1_1
 import ExtensionCenter from './ExtensionCenter'
@@ -10,10 +15,26 @@ import SetupCenter from './SetupCenter'
 import ChatCenter from './ChatCenter' // KWT_LOCAL_CHAT_V2_2_0
 // KWT_STUDIO_INSTALLER_V2_0_0
 import {LayoutDashboard,Server,Terminal,Settings2,Menu,Type,Download,MessageCircle} from 'lucide-react' // KWT_UNIFIED_STABILITY_V1_6
-import {api,imageUrl,fontFileUrl,type FontLibrary,type Project,type PageData,type PageList,type LayerData,type ZipItem} from './api'
+import {BASE,api,imageUrl,fontFileUrl,type FontLibrary,type Project,type PageData,type PageList,type LayerData,type ZipItem} from './api'
 
 // KWT_STUDIO_LAYER_CRUD_V1_6_1
 type KwtLayerEdit = LayerData | {region_id:string;deleted:true}
+// KWT_SHAPE_FONT_V1: font IDs reference the existing Studio font library.
+type ShapeClass='round_bubble'|'rect_box'|'no_bubble'|'unknown'
+type ShapeFontPolicy={
+  shape_font_policy_enabled:boolean
+  font_id_round_bubble:string;font_id_rect_box:string
+  font_id_no_bubble:string;font_id_unknown:string
+}
+const SHAPE_NAMES:Record<ShapeClass,string>={
+  round_bubble:'둥근 말풍선',rect_box:'사각형·내레이션',
+  no_bubble:'말풍선 없음',unknown:'판정 불확실'
+}
+const SHAPE_TYPES:ShapeClass[]=['round_bubble','rect_box','no_bubble','unknown']
+const SHAPE_DEFAULTS:ShapeFontPolicy={
+  shape_font_policy_enabled:true,font_id_round_bubble:'default',
+  font_id_rect_box:'default',font_id_no_bubble:'default',font_id_unknown:'default'
+}
 
 // KWT_STUDIO_PREFERENCES_V1_6 - local UI preferences, separate from project edits.
 const PREF_KEY = 'kwt-studio-ui-v1.6'
@@ -136,6 +157,15 @@ export default function App(){
   // KWT_STUDIO_FONTS_V1_7_0: library + registered browser font faces.
   const [fontLibrary,setFontLibrary]=useState<FontLibrary>({default_id:'system',fonts:[]})
   const [fontVersion,setFontVersion]=useState(0)
+  const [shapeFontPolicy,setShapeFontPolicy]=useState<ShapeFontPolicy>(SHAPE_DEFAULTS)
+  useEffect(()=>{
+    if(section!=='editor')return
+    let disposed=false
+    void api<{values:{typesetting:ShapeFontPolicy}}>('/api/manager/runtime-settings')
+      .then(r=>{if(!disposed)setShapeFontPolicy(r.values.typesetting)})
+      .catch(e=>console.warn('[Shape Font Policy] settings fallback:',e))
+    return()=>{disposed=true}
+  },[section])
   const fontFacesLoaded=useRef(new Set<string>())
   const refreshFonts=useCallback(async()=>{
     const data=await api<FontLibrary>('/api/fonts')
@@ -155,6 +185,17 @@ export default function App(){
   useEffect(()=>{void refreshFonts().catch(()=>{})},[refreshFonts])
   useEffect(()=>{if(section==='editor')void refreshFonts().catch(()=>{})},[section,refreshFonts])
   const [dirty,setDirty]=useState<Record<string,KwtLayerEdit>>({})
+  // EXP_MANGA_V2_HISTORY: exact data snapshots; independent of native textbox Undo.
+  type HistoryState={layers:LayerData[];dirty:Record<string,KwtLayerEdit>;selected:string|null}
+  const historyRef=useRef<{undo:HistoryState[];redo:HistoryState[]}>({undo:[],redo:[]})
+  const [historyVersion,setHistoryVersion]=useState(0)
+  const snapshot=():HistoryState=>({layers:JSON.parse(JSON.stringify(layers)) as LayerData[],
+    dirty:JSON.parse(JSON.stringify(dirty)) as Record<string,KwtLayerEdit>,selected})
+  const restoreSnapshot=(v:HistoryState)=>{setLayers(v.layers);setDirty(v.dirty);setSelected(v.selected);setSavingMessage('편집 기록 복원됨 · 저장 필요')}
+  const recordHistory=()=>{historyRef.current.undo.push(snapshot());if(historyRef.current.undo.length>80)historyRef.current.undo.shift();historyRef.current.redo=[];setHistoryVersion(v=>v+1)}
+  const undo=()=>{const v=historyRef.current.undo.pop();if(!v)return;historyRef.current.redo.push(snapshot());restoreSnapshot(v);setHistoryVersion(n=>n+1)}
+  const redo=()=>{const v=historyRef.current.redo.pop();if(!v)return;historyRef.current.undo.push(snapshot());restoreSnapshot(v);setHistoryVersion(n=>n+1)}
+
   const [saveBusy,setSaveBusy]=useState(false)
   const [savingMessage,setSavingMessage]=useState('')
   const [message,setMessage]=useState<string|null>(null)
@@ -165,10 +206,32 @@ export default function App(){
   const [fontBulkConfirm,setFontBulkConfirm]=useState(false)
   const [fontBulkBusy,setFontBulkBusy]=useState(false)
   const [ocrVisible,setOCRVisible]=useState(()=>boolPref('ocrVisible',false))
+  const [proofPreview,setProofPreview]=useState(false)
+  const [maskEditing,setMaskEditing]=useState(false)
+  const [psdBusy,setPsdBusy]=useState(false)
+  // KWT_MANUAL_TYPESETTING_AUTOFIT_NAV_V1
+  type PendingNavigation = {kind:'page';id:string;n:number}|{kind:'zip';path:string}
+  const [pendingNavigation,setPendingNavigation]=useState<PendingNavigation|null>(null)
+  const [navigationBusy,setNavigationBusy]=useState(false)
+  const [autoFitMinimum,setAutoFitMinimum]=useState(18)
   const [leftOpen,setLeftOpen]=useState(()=>boolPref('leftOpen',true))
   const [view,setView]=useState<'split'|'edit'|'source'>(viewPref)
   const [editorFocus,setEditorFocus]=useState(false)
-  const effectiveView=editorFocus?'edit':view
+  // KWT_PAGE_SHELF_V1: mouse-hover reveal and optional pin for full screen.
+  // The shelf is in normal flow under the toolbar, never at fixed top:64px.
+  const [pageShelfHover,setPageShelfHover]=useState(false)
+  const [pageShelfFocus,setPageShelfFocus]=useState(false)
+  const [pageShelfPinned,setPageShelfPinned]=useState(false)
+  const pageShelfExpanded=editorFocus&&(pageShelfHover||pageShelfFocus||pageShelfPinned)
+  useEffect(()=>{
+    if(!editorFocus){
+      setPageShelfHover(false)
+      setPageShelfFocus(false)
+      setPageShelfPinned(false)
+    }
+  },[editorFocus])
+  const [focusShowOriginal,setFocusShowOriginal]=useState(()=>boolPref('focusShowOriginal',false))
+  const effectiveView=editorFocus?(focusShowOriginal?'split':'edit'):view
   const toggleEditorFocus=()=>{
     if(editorFocus){
       setEditorFocus(false)
@@ -191,7 +254,7 @@ export default function App(){
   },[])
   useEffect(()=>{if(section!=='editor'&&editorFocus)setEditorFocus(false)},[section,editorFocus])
   const [version,setVersion]=useState(0)
-  const [follow,setFollow]=useState(()=>boolPref('follow',true))
+  const [follow,setFollow]=useState(()=>boolPref('follow',false))
   const [filter,setFilter]=useState(()=>strPref('filter',''))
   const activeProject=projects.find(x=>x.id===active)||null
   const selectedLayer=layers.find(x=>x.region_id===selected)||null
@@ -204,8 +267,8 @@ export default function App(){
   const pushError=(e:unknown)=>setMessage(e instanceof Error?e.message:String(e))
 
   // KWT_STUDIO_PREFERENCES_V1_6: persist only UI preferences, never unsaved layer changes.
-  useEffect(()=>{persistPrefs({section,navExpanded,root,output,recursive,ocrVisible,leftOpen,view,follow,filter})},
-    [section,navExpanded,root,output,recursive,ocrVisible,leftOpen,view,follow,filter])
+  useEffect(()=>{persistPrefs({section,navExpanded,root,output,recursive,ocrVisible,leftOpen,view,follow,filter,focusShowOriginal})},
+    [section,navExpanded,root,output,recursive,ocrVisible,leftOpen,view,follow,filter,focusShowOriginal])
 
   // KWT_BRIDGE_RESTART_V1_8_0: self-restart the owned local Bridge only.
   // Never restart the OCR/Gemma processes or kill a port by name.
@@ -262,11 +325,16 @@ export default function App(){
 
   const loadPage=useCallback(async(id:string,n:number,flush=true)=>{
     if(loading.current)return
-    if(Object.keys(dirtyRef.current).length>0&&flush&&!window.confirm('저장되지 않은 편집이 있습니다. 변경을 버리고 이동할까요?'))return
+    // Native window.confirm() can fail or be suppressed in WebView2.
+    // A deferred in-app dialog owns the navigation decision (never discard yet).
+    if(flush&&Object.keys(dirtyRef.current).length>0){
+      if(id===activeRef.current&&n===indexRef.current)return
+      setPendingNavigation({kind:'page',id,n});return
+    }
     loading.current=true
     try{
       const data=await api<PageData>(`/api/page?id=${encodeURIComponent(id)}&index=${n}`)
-      setPage(data);setLayers(data.layers);setSelected(null);setDirty({});setIndex(n);setVersion(v=>v+1)
+      setMaskEditing(false);setPage(data);setLayers(data.layers);setSelected(null);setDirty({});historyRef.current={undo:[],redo:[]};setHistoryVersion(v=>v+1);setIndex(n);setVersion(v=>v+1)
     }catch(e){pushError(e)}finally{loading.current=false}
   },[])
 
@@ -305,7 +373,8 @@ export default function App(){
         if(e.payload.type==='drop'&&e.payload.paths.length){
           const p=e.payload.paths[0]
           if(p.toLowerCase().endsWith('.zip')){
-            void api<Project>('/api/open',{source:p}).then(project=>{setProjects(prev=>[...prev.filter(x=>x.id!==project.id),project]);setActive(project.id)}).catch(pushError)
+            if(Object.keys(dirtyRef.current).length){setPendingNavigation({kind:'zip',path:p})}
+            else void api<Project>('/api/open',{source:p}).then(project=>{setProjects(prev=>[...prev.filter(x=>x.id!==project.id),project]);setActive(project.id)}).catch(pushError)
           }else setRoot(p)
         }
       })
@@ -343,12 +412,28 @@ export default function App(){
     }catch(e){pushError(e)}finally{setReviewBusy(false)}
   }
   const openZip=async(path:string)=>{
-    try{const p=await api<Project>('/api/open',{source:path,output_dir:output.trim()||undefined});setProjects(prev=>[...prev.filter(x=>x.id!==p.id),p]);setFollow(true);setActive(p.id);setMessage(null)}catch(e){pushError(e)}
+    if(Object.keys(dirtyRef.current).length){setPendingNavigation({kind:'zip',path});return}
+    try{const p=await api<Project>('/api/open',{source:path,output_dir:output.trim()||undefined});setProjects(prev=>[...prev.filter(x=>x.id!==p.id),p]);setActive(p.id);setMessage(null)}catch(e){pushError(e)}
   }
   const start=async()=>{
     const files=selectedZips.length?selectedZips:activeProject?[activeProject.source]:[]
     if(!files.length){setMessage('ZIP 목록에서 처리할 파일을 선택하세요.');return}
     try{await api('/api/process',{paths:files,output_dir:output.trim()||undefined});await refreshProjects();setMessage(null);if(!active)await openZip(files[0])}catch(e){pushError(e)}
+  }
+  const exportPsd=async()=>{
+    if(!activeRef.current||!page?.editable||psdBusy)return
+    setPsdBusy(true)
+    try{
+      if(Object.keys(dirtyRef.current).length){setMessage('PSD 출력 전 텍스트 변경을 먼저 저장하세요.');return}
+      const saved=await api<{ok:boolean;path:string;size_bytes:number;photoshop_script?:string;layers:string[]}>('/api/experiment/export-psd',{
+        id:activeRef.current,index:indexRef.current
+      })
+      if(!saved.ok||!saved.path)throw new Error('PSD 파일을 저장하지 못했습니다.')
+      const sizeMb=(saved.size_bytes/1048576).toFixed(1)
+      setMessage(`PSD 레이어 저장 완료 (${sizeMb} MB): ${saved.path}${saved.photoshop_script?' · Photoshop 텍스트 편집용 JSX: '+saved.photoshop_script:''}`)
+      setSavingMessage('PSD 저장 완료 · 출력 경로는 알림을 확인하세요.')
+    }catch(e){pushError(e)}
+    finally{setPsdBusy(false)}
   }
   // KWT_FONT_BULK_V1_9_0: selected ZIP only; never overwrite unsaved canvas changes.
   const applyDefaultFont=async()=>{
@@ -368,6 +453,8 @@ export default function App(){
   const update=(rid:string,patch:Partial<LayerData>)=>{
     const found=layers.find(l=>l.region_id===rid)
     if(!found)return
+    recordHistory()
+    // Manual slider overrides automatic font fitting, not bubble shape/reflow.
     setLayers(prev=>prev.map(l=>l.region_id===rid?{...l,...patch}:l))
     setDirty(prev=>{
       const pending=prev[rid]
@@ -375,8 +462,93 @@ export default function App(){
       return {...prev,[rid]:{...base,...patch}}
     })
   }
+  // KWT_SHAPE_FONT_V1: explicit font choice wins over class mapping; an
+  // independent "use type font" switch restores the automatic font.
+  const fontForShapeClass=(shape:ShapeClass):string=>{
+    const key=('font_id_'+shape) as keyof Omit<ShapeFontPolicy,'shape_font_policy_enabled'>
+    const selected=shapeFontPolicy[key]
+    return selected&&selected!=='default'?selected:fontLibrary.default_id
+  }
+  const chooseShapeClass=(layer:LayerData,value:string)=>{
+    const override=(value==='auto'?null:value as ShapeClass)
+    const auto=layer.shape_class_auto||'unknown'
+    const effective=override||auto
+    const patch:Partial<LayerData>={shape_class_override:override,shape_class_effective:effective}
+    if(layer.font_policy_auto===true&&shapeFontPolicy.shape_font_policy_enabled)
+      Object.assign(patch,{font_id:fontForShapeClass(effective),font_policy_auto:true})
+    update(layer.region_id,patch)
+  }
+  const selectShapeFont=(layer:LayerData)=>{
+    if(!shapeFontPolicy.shape_font_policy_enabled)return
+    const effective=layer.shape_class_override||layer.shape_class_auto||'unknown'
+    update(layer.region_id,{
+      font_policy_auto:true,font_id:fontForShapeClass(effective),
+      shape_class_effective:effective
+    })
+  }
+  // KWT_PILLOW_BULK_V1: current-page edit only; preserves individual
+  // auto_fit/shape_fit settings so switching all back ON restores preferences.
+  // The change is pending until Ctrl+S, and Undo restores the full snapshot.
+  const setPillowAll=(enabled:boolean)=>{
+    if(!page?.editable||saveBusy||maskEditing)return
+    const changed=layers.filter(layer=>(layer.pillow_sync!==false)!==enabled)
+    if(!changed.length)return
+    recordHistory()
+    setLayers(prev=>prev.map(layer=>
+      (layer.pillow_sync!==false)===enabled?layer:{...layer,pillow_sync:enabled}))
+    setDirty(prev=>{
+      const next={...prev}
+      for(const layer of changed){
+        const pending=prev[layer.region_id]
+        const base=pending&&!('deleted' in pending)?pending:layer
+        next[layer.region_id]={...base,pillow_sync:enabled}
+      }
+      return next
+    })
+    setSavingMessage('현재 페이지 Pillow 전체 '+(enabled?'ON':'OFF')+' · Ctrl+S로 저장')
+  }
+  const allPillowOn=layers.length>0&&layers.every(layer=>layer.pillow_sync!==false)
+  const allPillowOff=layers.length>0&&layers.every(layer=>layer.pillow_sync===false)
+  const fitSelected=async(layer:LayerData,silent=false)=>{
+    if(!activeRef.current||!page?.editable)return
+    try{
+      const result=await api<{font_size:number;fits_minimum:boolean;minimum_requested:number;layout:string;fallback:boolean}>(
+        '/api/experiment/manual-fit',{id:activeRef.current,index:indexRef.current,edit:layer,minimum:autoFitMinimum})
+      // Ignore a result if the selection/page or editable inputs changed mid-request.
+      const current=layers.find(l=>l.region_id===layer.region_id)
+      if(!current||current.text!==layer.text||JSON.stringify(current.bbox)!==JSON.stringify(layer.bbox))return
+      if(result.font_size!==current.font_size||!current.auto_fit)
+        update(layer.region_id,{font_size:result.font_size,auto_fit:true})
+      if(!result.fits_minimum&&!silent)
+        setMessage(`선택한 영역은 ${autoFitMinimum}px 이상으로 모두 넣기 어렵습니다. 박스를 확대하거나 문장을 줄여 주세요.`)
+      else if(!silent)setSavingMessage(`자동 맞춤: ${result.font_size}px · 저장 필요`)
+    }catch(e){if(!silent)pushError(e)}
+  }
+  const fitWatchKey=selectedLayer?JSON.stringify([
+    selectedLayer.region_id,selectedLayer.text,selectedLayer.bbox,
+    selectedLayer.font_id,selectedLayer.stroke_width,selectedLayer.rich_enabled
+  ]):''
+  useEffect(()=>{
+    if(!selectedLayer?.auto_fit||selectedLayer.pillow_sync===false||!active||!page?.editable)return
+    const layer=selectedLayer
+    let activeRequest=true
+    const timer=window.setTimeout(async()=>{
+      try{
+        const result=await api<{font_size:number;fits_minimum:boolean}>(
+          '/api/experiment/manual-fit',{id:active,index,edit:layer,minimum:autoFitMinimum})
+        if(!activeRequest)return
+        // Recheck current identity, page and inputs before mutating the selected layer.
+        if(activeRef.current!==active||indexRef.current!==index)return
+        const current=layers.find(l=>l.region_id===layer.region_id)
+        if(current?.auto_fit&&current.pillow_sync!==false&&current.text===layer.text&&JSON.stringify(current.bbox)===JSON.stringify(layer.bbox)&&current.font_size!==result.font_size)
+          update(layer.region_id,{font_size:result.font_size})
+      }catch(e){if(activeRequest)console.warn('[Manual auto-fit]',e)}
+    },550)
+    return()=>{activeRequest=false;window.clearTimeout(timer)}
+  },[fitWatchKey,selectedLayer?.auto_fit,selectedLayer?.pillow_sync,active,index,page?.editable,autoFitMinimum])
   const createLayer=()=>{
     if(!page?.editable)return
+    recordHistory()
     const origin=layers.find(l=>l.region_id===selected) || layers[0]
     const base=origin?.bbox || [80,80,220,120]
     const bbox=[Math.max(0,Math.round(base[0]+24)),Math.max(0,Math.round(base[1]+24)),
@@ -384,9 +556,10 @@ export default function App(){
     const region_id=`manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`
     const created:LayerData={
       region_id,ocr_bbox:[...bbox],bbox,source_text:'',text:'새 번역',
-      font_size:origin?.font_size||24,font_id:fontLibrary.default_id,text_color:origin?.text_color||'#000000',
+      font_size:origin?.font_size||24,font_id:fontLibrary.default_id,font_policy_auto:false,
+       shape_class_auto:'unknown',shape_class_override:null,shape_class_effective:'unknown',text_color:origin?.text_color||'#000000',
       stroke_color:origin?.stroke_color||'#ffffff',stroke_width:origin?.stroke_width??2,
-      align:origin?.align||'center',visible:true,edited:true
+      align:origin?.align||'center',visible:true,edited:true,auto_fit:false,shape_fit:false,pillow_sync:true,rotation:0
     }
     setLayers(prev=>[...prev,created])
     setDirty(prev=>({...prev,[region_id]:created}))
@@ -399,6 +572,7 @@ export default function App(){
     if(!page?.editable||!selected)return
     const target=layers.find(l=>l.region_id===selected)
     if(!target)return
+    recordHistory()
     const rid=selected
     const persisted=page.layers.some(l=>l.region_id===rid)
     setLayers(prev=>prev.filter(l=>l.region_id!==rid))
@@ -412,20 +586,51 @@ export default function App(){
     setFollow(false)
     setSavingMessage('박스 삭제됨 · 저장 필요')
   }
-  const save=useCallback(async()=>{
-    if(!activeRef.current||!page?.editable||Object.keys(dirtyRef.current).length===0||saveBusy)return
+  const save=useCallback(async(reload=true):Promise<boolean>=>{
+    if(!activeRef.current||!page?.editable||saveBusy)return false
+    if(Object.keys(dirtyRef.current).length===0)return true
     setSaveBusy(true)
     try{
       const edits=Object.values(dirtyRef.current)
       const res=await api<{message:string;zip_updated:boolean}>('/api/save',{id:activeRef.current,index:indexRef.current,edits})
-      setDirty({});setSavingMessage(res.message);setVersion(v=>v+1);setMessage(null);void loadPages(activeRef.current);void loadPage(activeRef.current,indexRef.current,false)
-    }catch(e){pushError(e)}finally{setSaveBusy(false)}
+      dirtyRef.current={};setDirty({});historyRef.current={undo:[],redo:[]};setHistoryVersion(v=>v+1)
+      setSavingMessage(res.message);setVersion(v=>v+1);setMessage(null)
+      void loadPages(activeRef.current)
+      if(reload)void loadPage(activeRef.current,indexRef.current,false)
+      return true
+    }catch(e){pushError(e);return false}finally{setSaveBusy(false)}
   },[page?.editable,saveBusy,loadPages,loadPage])
+
+  const resolveNavigation=async(choice:'save'|'discard'|'cancel')=>{
+    const pending=pendingNavigation
+    if(!pending||navigationBusy)return
+    if(choice==='cancel'){setPendingNavigation(null);return}
+    setNavigationBusy(true)
+    try{
+      if(choice==='save'){
+        const saved=await save(false)
+        if(!saved)return // Keep dialog and all edits when save fails.
+      }else{
+        dirtyRef.current={};setDirty({})
+        historyRef.current={undo:[],redo:[]};setHistoryVersion(v=>v+1)
+      }
+      setPendingNavigation(null)
+      if(pending.kind==='page'){
+        setFollow(false)
+        await loadPage(pending.id,pending.n,false)
+      }else{
+        const p=await api<Project>('/api/open',{source:pending.path,output_dir:output.trim()||undefined})
+        setProjects(prev=>[...prev.filter(x=>x.id!==p.id),p]);setActive(p.id);setMessage(null)
+      }
+    }catch(e){pushError(e)}finally{setNavigationBusy(false)}
+  }
   useEffect(()=>{
     const onKey=(e:KeyboardEvent)=>{
       if(section==='editor'&&e.key==='Escape'&&editorFocus){e.preventDefault();toggleEditorFocus();return}
       if(section==='editor'&&(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s') {e.preventDefault();void save();return}
       if(['INPUT','TEXTAREA','SELECT'].includes((e.target as HTMLElement)?.tagName) || (e.target as HTMLElement)?.isContentEditable)return
+      if(section==='editor'&&page?.editable&&(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();if(e.shiftKey)redo();else undo();return}
+      if(section==='editor'&&page?.editable&&(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redo();return}
       if(section==='editor'&&page?.editable&&(e.key==='Delete'||e.key==='Backspace')&&selected&&!e.ctrlKey&&!e.metaKey){e.preventDefault();deleteLayer();return}
       if(section==='editor'&&page?.editable&&(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='n'){e.preventDefault();createLayer();return}
       if(section==='editor'&&e.key==='ArrowRight'&&activeRef.current){setFollow(false);void loadPage(activeRef.current,indexRef.current+1)}
@@ -433,14 +638,60 @@ export default function App(){
       if(e.key==='F11') {void import('@tauri-apps/api/window').then(async m=>{const w=m.getCurrentWindow();await w.setFullscreen(!(await w.isFullscreen()))}).catch(()=>{})}
     }
     window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey)
-  },[save,loadPage,section,editorFocus,selected,layers,page?.editable])
+  },[save,loadPage,section,editorFocus,selected,layers,page?.editable,historyVersion])
 
   const nav=(n:number)=>{if(!active)return;setFollow(false);void loadPage(active,Math.min(Math.max(0,n),pages.length-1))}
+  // Show the same final Pillow-rendered page beneath editable Konva hit boxes.
+  // Recomputed on layer edits, not cached by the legacy static preview URL.
+  const proof=usePillowProof(active,index,Object.values(dirty),version,
+    section==='editor'&&Boolean(page?.editable)&&!maskEditing&&!proofPreview,
+    layers.filter(layer=>layer.visible&&layer.pillow_sync===false).map(layer=>layer.region_id))
   const currentSource=active?imageUrl(active,index,'source',false,version):''
   const currentClean=active&&page?.editable?imageUrl(active,index,'clean',false,version):''
   const currentResult=active&&page?.ready?imageUrl(active,index,'result',false,version):''
 
+  // KWT_STUDIO_TRAY_V1: hide the native window without ending the GUI lease or translation tasks.
+  const traySupported = Boolean((window as Window & {__TAURI_INTERNALS__?:unknown}).__TAURI_INTERNALS__)
+  const minimizeToTray = async () => {
+    try {
+      const {invoke,isTauri} = await import('@tauri-apps/api/core')
+      if(!isTauri()){setMessage('트레이 기능은 설치된 Windows Studio에서만 사용할 수 있습니다.');return}
+      await invoke('kwt_hide_to_tray',{sessionId:guiSessionId.current})
+    }catch(e){setMessage(`트레이 이동 실패: ${e instanceof Error?e.message:String(e)}`)}
+  }
+
+  // KWT_CUSTOM_TITLEBAR_V1: native window commands; the existing close listener preserves Bridge shutdown.
+  const captionWindowAction = async (action:'minimize'|'maximize'|'close') => {
+    try {
+      const {getCurrentWindow}=await import('@tauri-apps/api/window')
+      const current=getCurrentWindow()
+      if(action==='minimize')await current.minimize()
+      else if(action==='maximize')await current.toggleMaximize()
+      else await current.close() // Existing onCloseRequested will close GUI lease and destroy window.
+    }catch(e){setMessage(`창 제어 실패: ${e instanceof Error?e.message:String(e)}`)}
+  }
+
+  // KWT_FOCUS_DIALOG_PORTAL_V1: native Fullscreen API renders only descendants
+  // of its fullscreenElement. App-level dialogs otherwise exist but disappear.
+  const dialogInsideFullscreen=(element:ReactNode)=>{
+    const host=workspaceRef.current
+    return editorFocus && host && document.fullscreenElement===host
+      ? createPortal(element,host)
+      : element
+  }
+
   return <div className="app">
+    {traySupported&&<div className="kwt-custom-caption" role="toolbar" aria-label="Studio 창 관리">
+      <div className="kwt-caption-drag" data-tauri-drag-region onDoubleClick={()=>void captionWindowAction('maximize')} title="끌어서 창 이동 · 두 번 클릭하여 최대화">
+        <Layers3 size={15}/><span data-tauri-drag-region className="kwt-caption-title">KoneWebTranslator Studio</span><span data-tauri-drag-region className="kwt-caption-mark">DESKTOP</span>
+      </div>
+      <div className="kwt-caption-buttons">
+        <button type="button" className="kwt-caption-button kwt-caption-tray" title="트레이로 숨기기 · 백그라운드 작업 계속" aria-label="트레이로 숨기기" onClick={()=>void minimizeToTray()}><Archive size={15}/></button>
+        <button type="button" className="kwt-caption-button" title="작업 표시줄로 최소화" aria-label="최소화" onClick={()=>void captionWindowAction('minimize')}><Minus size={16}/></button>
+        <button type="button" className="kwt-caption-button" title="최대화/복원" aria-label="최대화 또는 복원" onClick={()=>void captionWindowAction('maximize')}><Square size={13}/></button>
+        <button type="button" className="kwt-caption-button kwt-caption-close" title="Studio 완전 종료" aria-label="완전 종료" onClick={()=>void captionWindowAction('close')}><X size={17}/></button>
+      </div>
+    </div>}
     <header className="topbar">
       <div className="brand"><span className="brand-mark"><Layers3 size={21}/></span><div><strong>KoneWebTranslator</strong><small>STUDIO <em>v0.2</em></small></div></div>
       <div className="menu-tabs"><span className="studio-page-title">{({editor:'번역 · 검수 · 편집',servers:'AI 서버 관리',chat:'로컬 채팅',translation:'번역 설정',ocr:'OCR 설정',logs:'로그 · 진단',settings:'환경 설정',extension:'웹 확장앱 관리',fonts:'폰트 관리'} as Record<StudioSection,string>)[section]}</span></div>
@@ -480,7 +731,7 @@ export default function App(){
         <div className="nav-spacer"/><div className="nav-version">{navExpanded?'STUDIO v0.2':'v0.2'}</div>
       </nav>
       <div className="unified-content">
-    <div ref={workspaceRef} className={'workspace '+(leftOpen?'':'collapsed')+(editorFocus?' kwt-editor-focus':'')} style={{display:section==='editor'?'grid':'none'}}>
+    <div ref={workspaceRef} className={'workspace '+(leftOpen?'':'collapsed')+(editorFocus?' kwt-editor-focus':'')+(editorFocus&&focusShowOriginal?' kwt-focus-show-original':'')} style={{display:section==='editor'?'grid':'none'}}>
       {leftOpen&&<aside className="sidebar">
         <div className="sidebar-head"><b>작업 파일</b><button className="icon-btn" onClick={()=>setLeftOpen(false)}><PanelLeftClose size={18}/></button></div>
         <div className="field"><label>프로젝트 루트 폴더</label><div className="inline"><input value={root} onChange={e=>setRoot(e.target.value)} placeholder="C:\\...\\manga"/><button className="icon-btn" onClick={()=>void chooseFolder()} title="폴더 선택"><FolderOpen size={18}/></button></div></div>
@@ -500,40 +751,138 @@ export default function App(){
         </div>
       </aside>}
       <main className="main">
-        <div className="document-toolbar">
-          <div className="doc-label">{!leftOpen&&<button className="icon-btn" onClick={()=>setLeftOpen(true)}><PanelLeftOpen size={20}/></button>}
-            <div><div className="eyebrow">편집 작업영역</div><b title={activeProject?.source}>{activeProject?.source_name||'ZIP을 선택하세요'}</b></div></div>
-          <div className="page-nav"><button className="icon-btn" onClick={()=>nav(index-1)} disabled={!active||index<=0}><ChevronLeft size={20}/></button><span><strong>{active?index+1:0}</strong><small> / {pages.length}</small></span><button className="icon-btn" onClick={()=>nav(index+1)} disabled={!active||index>=pages.length-1}><ChevronRight size={20}/></button></div>
-          <div className="toolbar-actions"><label className="mini-check"><input type="checkbox" checked={ocrVisible} onChange={e=>setOCRVisible(e.target.checked)}/> OCR 박스</label><label className="mini-check"><input type="checkbox" checked={follow} onChange={e=>setFollow(e.target.checked)}/> 자동 따라가기</label><div className="view-switch"><button className={view==='split'?'selected':''} onClick={()=>setView('split')}>비교</button><button className={view==='edit'?'selected':''} onClick={()=>setView('edit')}>편집 집중</button><button className={view==='source'?'selected':''} onClick={()=>setView('source')}>원본</button><button className={"kwt-focus-toggle"+(editorFocus?" selected":"")} onClick={toggleEditorFocus} aria-pressed={editorFocus} title={editorFocus?'식질 전체화면 닫기 (Esc)':'한국어 식질 전체화면'}><Maximize2 size={15}/>{editorFocus?'전체화면 종료':'식질 전체화면'}</button></div></div>
-        </div>
+        <EditorToolbar
+          filename={activeProject?.source_name||'ZIP을 선택하세요'}
+          sourcePath={activeProject?.source}
+          sidebarOpen={leftOpen} openSidebar={()=>setLeftOpen(true)}
+          active={Boolean(active)} page={index} pageCount={pages.length} navigate={nav}
+          editable={Boolean(page?.editable)} maskEditing={maskEditing}
+          toggleMask={()=>{setMaskEditing(v=>!v);setProofPreview(false)}}
+          proofPreview={proofPreview} toggleProof={()=>{setProofPreview(v=>!v);setMaskEditing(false)}}
+          canUndo={historyRef.current.undo.length>0&&!saveBusy}
+          canRedo={historyRef.current.redo.length>0&&!saveBusy}
+          undo={undo} redo={redo}
+          psdBusy={psdBusy} exportPsd={()=>void exportPsd()}
+          ocrVisible={ocrVisible} setOcrVisible={setOCRVisible}
+          follow={follow} setFollow={setFollow}
+          pillowEnabled={allPillowOn} pillowMixed={!allPillowOn&&!allPillowOff&&layers.length>0}
+          pillowAvailable={Boolean(page?.editable)&&layers.length>0&&!saveBusy&&!maskEditing}
+          setPillowAll={setPillowAll}
+          view={view} setView={setView} editorFocus={editorFocus} toggleFocus={toggleEditorFocus}
+          focusShowOriginal={focusShowOriginal} toggleFocusOriginal={()=>setFocusShowOriginal(v=>!v)}
+        />
         {activeProject&&<div className="progress-strip"><div className="progress-line"><span style={{width:`${activeProject.total?activeProject.completed/activeProject.total*100:0}%`}}/></div><span><Clock size={13}/> {activeProject.detail} ({activeProject.completed}/{activeProject.total})</span></div>}
-        <div className="page-strip scroll">{pages.map(p=><button key={p.index} className={'page-thumb '+(index===p.index?'active':'')} onClick={()=>nav(p.index)} title={p.name}>
-          {active&&p.ready?<img src={imageUrl(active,p.index,'result',true,0)} loading="lazy"/>:<span className="thumb-placeholder">{p.index+1}</span>}<span className="thumb-name">{p.index+1}{p.edited?' *':''}</span><i className={p.ready?'ready':''}/></button>)}
-          {!pages.length&&<span className="strip-placeholder">파일을 선택하면 페이지가 표시돼</span>}
+        <div className={'kwt-page-strip-shelf'+(pageShelfExpanded?' is-open':'')+(pageShelfPinned?' is-pinned':'')}
+          onMouseEnter={()=>{if(editorFocus)setPageShelfHover(true)}}
+          onMouseLeave={()=>setPageShelfHover(false)}
+          onFocusCapture={()=>{if(editorFocus)setPageShelfFocus(true)}}
+          onBlurCapture={e=>{
+            if(!e.currentTarget.contains(e.relatedTarget as Node|null))setPageShelfFocus(false)
+          }}
+          onKeyDown={e=>{
+            if(editorFocus&&e.key==='Escape'&&pageShelfPinned){
+              e.preventDefault();e.stopPropagation();setPageShelfPinned(false)
+              setPageShelfFocus(false)
+              ;(e.target as HTMLElement).blur()
+            }
+          }}>
+          {editorFocus&&<button type="button" className="kwt-page-shelf-handle"
+            aria-expanded={pageShelfExpanded} aria-label="페이지 목록 펼치기 또는 고정"
+            title={pageShelfPinned?'페이지 목록 고정 해제':'페이지 목록을 고정하려면 클릭'}
+            onClick={()=>setPageShelfPinned(value=>!value)}>
+            <span>페이지 목록</span><span className="kwt-page-shelf-count">{pages.length}장</span>
+            <span className="kwt-page-shelf-chevron">{pageShelfPinned?'고정됨':pageShelfExpanded?'▴':'▾'}</span>
+          </button>}
+          <div className="page-strip scroll" aria-label="페이지 썸네일 목록">
+            {pages.map(p=><button key={p.index} className={'page-thumb '+(index===p.index?'active':'')}
+              onClick={e=>{e.currentTarget.blur();setPageShelfFocus(false);setPageShelfPinned(false);nav(p.index)}} title={p.name}>
+              {active&&p.ready?<img src={imageUrl(active,p.index,'result',true,0)} loading="lazy"/>:<span className="thumb-placeholder">{p.index+1}</span>}<span className="thumb-name">{p.index+1}{p.edited?' *':''}</span><i className={p.ready?'ready':''}/></button>)}
+            {!pages.length&&<span className="strip-placeholder">파일을 선택하면 페이지가 표시돼</span>}
+          </div>
         </div>
         <div className="image-area">
           {(!active||!page)&&<div className="empty-work"><ImageIcon size={47}/><h2>이미지를 선택하면 여기서 바로 검수할 수 있어</h2><p>왼쪽에서 ZIP 열기 · OCR 박스 선택 · 드래그 · 속성 수정 · Ctrl+S 저장</p></div>}
           {active&&page&&<div className={'compare '+effectiveView}>
-            {view!=='edit'&&<div className="image-panel"><div className="panel-title"><span>일본어 원본</span><span className="label-muted">참조 레이어</span></div><div className="reference-image">{currentSource&&<img src={currentSource} alt="일본어 원본"/>}</div></div>}
-            {view!=='source'&&<div className="image-panel editor-panel"><div className="panel-title"><span>한국어 식질 결과</span><span className={page.editable?'label-ok':'label-warn'}>{page.editable?'편집 가능':'자동 처리 대기/배경 없음'}</span></div>
-              {page.editable?<EditorCanvas image={currentClean} layers={layers} ocr={page.ocr} selected={selected} onSelect={setSelected} onUpdate={update} showOCR={ocrVisible} editable={page.editable} maximize={editorFocus} fontVersion={fontVersion}/>
+            {effectiveView!=='edit'&&<div className="image-panel"><div className="panel-title"><span>일본어 원본</span><span className="label-muted">참조 레이어</span></div><div className="reference-image">{currentSource&&<img src={currentSource} alt="일본어 원본"/>}</div></div>}
+            {effectiveView!=='source'&&<div className="image-panel editor-panel"><div className="panel-title"><span>한국어 식질 결과</span><span className={page.editable?'label-ok':'label-warn'}>{page.editable?'편집 가능':'자동 처리 대기/배경 없음'}</span></div>
+              {page.editable&&maskEditing&&active?<MaskBrushEditor image={currentSource} mask={`${imageUrl(active,index,'clean',false,version).replace('kind=clean','kind=mask')}`} onCancel={()=>setMaskEditing(false)} onApply={async(strokes:MaskStroke[])=>{
+                if(Object.keys(dirtyRef.current).length)throw new Error('먼저 텍스트 박스 변경을 저장해야 합니다.')
+                await api('/api/experiment/mask',{id:active,index,strokes})
+                setVersion(v=>v+1)
+                await loadPage(active,index,false)
+                setMaskEditing(false)
+              }}/>:page.editable&&proofPreview&&active?<ProofPreview projectId={active} index={index} edits={Object.values(dirty)} version={version}/>:page.editable?<EditorCanvas image={currentClean} renderedImage={proof.url} proofBusy={proof.loading} layers={layers} ocr={page.ocr} selected={selected} onSelect={setSelected} onUpdate={update} showOCR={ocrVisible} editable={page.editable} maximize={editorFocus} fontVersion={fontVersion}/>
                 :<div className="reference-image">{currentResult?<img src={currentResult} alt="한국어 식질 결과"/>:<div className="empty-layer">해당 페이지 자동 처리를 기다리는 중</div>}</div>}
             </div>}
           </div>}
         </div>
-        <div className="bottom-bar"><span><span className={'state-dot '+(Object.keys(dirty).length?'changed':'')}/>{Object.keys(dirty).length?'저장되지 않은 변경 있음':savingMessage||'변경 사항 없음'}</span><span>글자 클릭 선택 · 드래그 위치 · 모서리 크기 · Ctrl+S 저장</span><button className="primary" onClick={()=>void save()} disabled={!page?.editable||!Object.keys(dirty).length||saveBusy}><Save size={16}/>{saveBusy?'저장 중...':'수정 저장 Ctrl+S'}</button></div>
+        <div className="bottom-bar"><span><span className={'state-dot '+(Object.keys(dirty).length?'changed':'')}/>{Object.keys(dirty).length?'저장되지 않은 변경 있음':savingMessage||'변경 사항 없음'}</span><span>글자 클릭 선택 · 드래그 이동 · 작은 모서리 크기 · 원형점 회전 · Ctrl+S 저장</span><button className="primary" onClick={()=>void save()} disabled={!page?.editable||!Object.keys(dirty).length||saveBusy}><Save size={16}/>{saveBusy?'저장 중...':'수정 저장 Ctrl+S'}</button></div>
       </main>
       <aside className="properties"><div className="property-head"><b>식질 속성</b><button className="secondary" type="button" disabled={!activeProject||activeProject.state!=='completed'||fontBulkBusy} onClick={()=>setFontBulkConfirm(true)} title="현재 ZIP의 모든 자동 식질 박스에 등록된 기본 폰트 적용">{fontBulkBusy?'적용 중…':'기본 폰트 일괄 적용'}</button><button className="secondary kwt-add-layer" onClick={createLayer} disabled={!page?.editable} title="새 식질 박스 추가 (Ctrl+N)">+ 박스 추가</button></div>
         {selectedLayer&&page?.editable?<AnimatePresence mode="wait"><motion.div key={selectedLayer.region_id} initial={{opacity:0,y:5}} animate={{opacity:1,y:0}} exit={{opacity:0}} className="properties-content scroll">
           <div className="region-title"><span title={selectedLayer.region_id}>{selectedLayer.region_id.startsWith('manual-')?'수동 생성 영역':`영역 #${selectedLayer.region_id}`}</span><span className="pill">{selectedLayer.edited?'수정됨':'자동 식질'}</span></div>
           <button className="secondary kwt-delete-layer" onClick={deleteLayer} title="선택한 식질 박스 삭제 (Delete)">선택 박스 삭제</button>
           <div className="property-field"><label>일본어 OCR</label><div className="original-text">{selectedLayer.source_text}</div></div>
-          <div className="property-field"><label>한국어 텍스트</label><textarea id="layer-text" rows={5} value={selectedLayer.text} onChange={e=>update(selectedLayer.region_id,{text:e.target.value})}/></div>
-          <div className="property-field kwt-font-property"><label>폰트</label><select value={selectedLayer.font_id||'system'} onChange={e=>update(selectedLayer.region_id,{font_id:e.target.value})}>
+          <div className="property-field"><label>한국어 텍스트</label><label className="mini-check" style={{marginBottom:8}}><input type="checkbox" checked={Boolean(selectedLayer.rich_enabled)} onChange={e=>update(selectedLayer.region_id,{rich_enabled:e.target.checked})}/> 리치 텍스트 (실험)</label>{selectedLayer.rich_enabled&&<p className="ctl-description">강조: **굵게** · [[color:#FF0000]]빨강[[/color]] · 정확한 미리보기에서 확인</p>}<textarea id="layer-text" rows={5} value={selectedLayer.text} onChange={e=>update(selectedLayer.region_id,{text:e.target.value})}/></div>
+          <div className="property-field kwt-shape-font-property">
+            <label>말풍선 형태 및 자동 폰트</label>
+            <div className="ctl-description">자동 판정: <strong>{SHAPE_NAMES[selectedLayer.shape_class_auto||'unknown']}</strong>
+              {selectedLayer.shape_confidence!==undefined&&selectedLayer.shape_confidence>0&&
+                <span> · 신뢰도 {Math.round(selectedLayer.shape_confidence*100)}%</span>}
+            </div>
+            <label style={{display:'block',marginTop:9}}>영역 유형 강제 지정
+              <select value={selectedLayer.shape_class_override||'auto'}
+                onChange={e=>chooseShapeClass(selectedLayer,e.target.value)}>
+                <option value="auto">자동 판정 사용</option>
+                {SHAPE_TYPES.map(c=><option key={c} value={c}>{SHAPE_NAMES[c]}</option>)}
+              </select>
+            </label>
+            <label className="mini-check" style={{display:'flex',alignItems:'center',gap:8,marginTop:10}}>
+              <input type="checkbox" checked={Boolean(selectedLayer.font_policy_auto)}
+                disabled={!shapeFontPolicy.shape_font_policy_enabled}
+                onChange={e=>e.target.checked?selectShapeFont(selectedLayer):
+                  update(selectedLayer.region_id,{font_policy_auto:false})}/>
+              유형별 폰트 자동 적용 (이 박스)
+            </label>
+            <div className="ctl-description">적용 유형: {SHAPE_NAMES[selectedLayer.shape_class_override||selectedLayer.shape_class_auto||'unknown']}
+              {!shapeFontPolicy.shape_font_policy_enabled?' · 전역 설정 OFF':''}.
+              직접 폰트를 선택하면 이 박스만 수동 지정으로 전환됩니다.
+            </div>
+          </div>
+          <div className="property-field kwt-font-property"><label>폰트</label><select value={selectedLayer.font_id||'system'} onChange={e=>update(selectedLayer.region_id,{font_id:e.target.value,font_policy_auto:false})}>
             {fontLibrary.fonts.map(font=><option value={font.id} key={font.id}>{font.name}{fontLibrary.default_id===font.id?' (기본)':''}</option>)}
             {selectedLayer.font_id&&!fontLibrary.fonts.some(f=>f.id===selectedLayer.font_id)&&<option value={selectedLayer.font_id}>등록되지 않은 폰트 (대체 표시)</option>}
           </select><button className="subtle-btn" onClick={()=>setSection('fonts')}>폰트 관리</button></div>
-          <div className="property-field"><label>글자 크기 <strong>{selectedLayer.font_size}px</strong></label><input type="range" min={8} max={110} step={1} value={selectedLayer.font_size} onChange={e=>update(selectedLayer.region_id,{font_size:+e.target.value})}/><input type="number" min={8} max={180} value={selectedLayer.font_size} onChange={e=>update(selectedLayer.region_id,{font_size:+e.target.value||8})}/></div>
+          <div className="property-field"><label>글자 크기 <strong>{selectedLayer.font_size}px</strong></label><input type="range" min={8} max={110} step={1} value={selectedLayer.font_size} onChange={e=>update(selectedLayer.region_id,{font_size:+e.target.value,auto_fit:false})}/><input type="number" min={8} max={180} value={selectedLayer.font_size} onChange={e=>update(selectedLayer.region_id,{font_size:+e.target.value||8,auto_fit:false})}/>
+             <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginTop:10}}>
+               <button className="secondary" type="button" onClick={()=>void fitSelected(selectedLayer)} title="실제 Pillow 글꼴 폭으로 박스에 맞는 최대 크기 계산">자동 크기 맞춤</button>
+               <label className="mini-check"><input type="checkbox" checked={Boolean(selectedLayer.auto_fit)} onChange={e=>update(selectedLayer.region_id,{auto_fit:e.target.checked})}/> 내용·박스 변경 시 자동 맞춤</label>
+             </div>
+             <label style={{display:'flex',alignItems:'center',gap:8,fontSize:12,marginTop:7}}>권장 최소 크기 <input type="number" min={8} max={110} style={{width:70}} value={autoFitMinimum} onChange={e=>setAutoFitMinimum(Math.max(8,Math.min(110,+e.target.value||18)))}/>px</label>
+             {selectedLayer.shape_capable&&<label className="mini-check" style={{marginTop:9}}><input type="checkbox" checked={Boolean(selectedLayer.shape_fit)} onChange={e=>update(selectedLayer.region_id,{shape_fit:e.target.checked})}/> 말풍선 윤곽 줄맞춤 유지</label>}
+           </div>
+          <div className="property-field">
+            <label>선택 영역 Pillow 자동 배치</label>
+            <label className="mini-check" style={{display:'flex',gap:8,alignItems:'center',marginTop:8}}>
+              <input type="checkbox" checked={selectedLayer.pillow_sync!==false}
+                onChange={e=>update(selectedLayer.region_id,e.target.checked
+                  ?{pillow_sync:true}
+                  :{pillow_sync:false,shape_fit:false,auto_fit:false})}/>
+              Pillow 동기화 (선택 박스만)
+            </label>
+            <p className="ctl-description">OFF: 이 박스의 자동 줄맞춤을 멈추고 직접 줄바꿈·위치·회전을 편집합니다. 다른 박스는 영향받지 않습니다.</p>
+          </div>
+          <div className="property-field">
+            <label>글자 박스 회전 <strong>{Math.round(selectedLayer.rotation||0)}°</strong></label>
+            <input type="range" min={-180} max={180} step={1} value={selectedLayer.rotation||0}
+              onChange={e=>update(selectedLayer.region_id,{rotation:+e.target.value,pillow_sync:false,shape_fit:false,auto_fit:false})}/>
+            <div style={{display:'flex',gap:8,alignItems:'center',marginTop:6}}>
+              <input type="number" min={-180} max={180} step={1} style={{width:82}} value={selectedLayer.rotation||0}
+                onChange={e=>update(selectedLayer.region_id,{rotation:Math.max(-180,Math.min(180,+e.target.value||0)),pillow_sync:false,shape_fit:false,auto_fit:false})}/>
+              <button className="secondary" type="button" onClick={()=>update(selectedLayer.region_id,{rotation:0})}>회전 초기화</button>
+            </div>
+            <p className="ctl-description">박스 우측 상단 회전점을 드래그해서 기울일 수도 있습니다.</p>
+          </div>
           <div className="coordinate-grid">{['X','Y','너비','높이'].map((lab,i)=><label key={i}>{lab}<input type="number" value={Math.round(selectedLayer.bbox[i])} onChange={e=>{const box=[...selectedLayer.bbox];box[i]=+e.target.value;update(selectedLayer.region_id,{bbox:box})}}/></label>)}</div>
           <div className="property-field"><label>정렬</label><div className="select-group">{(['left','center','right'] as const).map(a=><button key={a} className={a===selectedLayer.align?'active':''} onClick={()=>update(selectedLayer.region_id,{align:a})}>{a==='left'?'왼쪽':a==='center'?'가운데':'오른쪽'}</button>)}</div></div>
           <div className="color-grid"><label>글자색<input type="color" value={selectedLayer.text_color} onChange={e=>update(selectedLayer.region_id,{text_color:e.target.value})}/></label><label>외곽선<input type="color" value={selectedLayer.stroke_color} onChange={e=>update(selectedLayer.region_id,{stroke_color:e.target.value})}/></label></div>
@@ -549,23 +898,34 @@ export default function App(){
     {/* KWT_CHROME_EXTENSION_GUIDE_V2_0_2 */}{section==='installer'&&<SetupCenter onOpenExtension={()=>setSection('extension')}/>}
     {section!=='editor'&&section!=='extension'&&section!=='fonts'&&section!=='installer'&&section!=='chat'&&<ControlCenter section={section} settingsGroup={settingsGroup} status={engineStatus} onStatusRefresh={refreshEngineStatus}/>}
     </div></div>
-    {fontBulkConfirm&&<div className="kwt-bridge-restart-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setFontBulkConfirm(false)}}>
+    {pendingNavigation&&dialogInsideFullscreen(<div className="kwt-bridge-restart-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!navigationBusy)setPendingNavigation(null)}}>
+      <div className="kwt-bridge-restart-dialog" role="dialog" aria-modal="true" aria-labelledby="kwt-unsaved-edit-title">
+        <h3 id="kwt-unsaved-edit-title">저장되지 않은 식질 변경</h3>
+        <p>현재 페이지의 편집 사항을 저장하고 이동할까요? 취소하면 지금 페이지와 편집 내용이 그대로 유지됩니다.</p>
+        <div className="kwt-bridge-restart-actions">
+          <button type="button" disabled={navigationBusy} onClick={()=>void resolveNavigation('cancel')}>취소 · 계속 편집</button>
+          <button type="button" disabled={navigationBusy} onClick={()=>void resolveNavigation('discard')}>변경 버리고 이동</button>
+          <button type="button" className="primary" disabled={navigationBusy} onClick={()=>void resolveNavigation('save')}>{navigationBusy?'처리 중…':'저장 후 이동'}</button>
+        </div>
+      </div>
+    </div>)}
+    {fontBulkConfirm&&dialogInsideFullscreen(<div className="kwt-bridge-restart-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setFontBulkConfirm(false)}}>
       <div className="kwt-bridge-restart-dialog" role="dialog" aria-modal="true" aria-labelledby="kwt-font-bulk-title">
         <h3 id="kwt-font-bulk-title">기본 폰트 일괄 적용</h3>
         <p>현재 ZIP의 전체 페이지에서 자동 식질 박스의 폰트만 '{fontLibrary.fonts.find(f=>f.id===fontLibrary.default_id)?.name||'Windows 기본'}'으로 변경합니다.</p>
         <p>텍스트·위치·크기·색상·수동 추가 박스는 유지합니다. 완료 ZIP과 편집 메타데이터에 저장됩니다. 페이지가 많으면 처리 시간이 걸릴 수 있습니다.</p>
         <div className="kwt-bridge-restart-actions"><button type="button" onClick={()=>setFontBulkConfirm(false)}>취소</button><button type="button" className="primary" disabled={fontBulkBusy} onClick={()=>void applyDefaultFont()}>전체 페이지 적용</button></div>
       </div>
-    </div>}
-    {bridgeRestartConfirm&&<div className="kwt-bridge-restart-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setBridgeRestartConfirm(false)}}>
+    </div>)}
+    {bridgeRestartConfirm&&dialogInsideFullscreen(<div className="kwt-bridge-restart-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setBridgeRestartConfirm(false)}}>
       <div className="kwt-bridge-restart-dialog" role="dialog" aria-modal="true" aria-labelledby="kwt-bridge-restart-title">
         <h3 id="kwt-bridge-restart-title">Studio Bridge 재시작</h3>
         <p>완료된 프로젝트 기록과 내부 작업 상태를 초기화하고 Bridge만 재시작합니다. OCR·Gemma 서버 및 디스크 파일은 유지됩니다.</p>
         <p>현재 작업 중인 번역이 있다면 재시작할 수 없습니다. 저장되지 않은 식질 변경도 먼저 저장해야 합니다.</p>
         <div className="kwt-bridge-restart-actions"><button type="button" onClick={()=>setBridgeRestartConfirm(false)}>취소</button><button type="button" className="primary" disabled={bridgeRestartBusy} onClick={()=>void restartBridge()}>Bridge 재시작</button></div>
       </div>
-    </div>}
-    {reviewPreview&&<div className="kwt-bridge-restart-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!reviewBusy)setReviewPreview(null)}}>
+    </div>)}
+    {reviewPreview&&dialogInsideFullscreen(<div className="kwt-bridge-restart-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!reviewBusy)setReviewPreview(null)}}>
       <div className="kwt-bridge-restart-dialog" role="dialog" aria-modal="true" aria-label="검수 완료 및 파일 정리">
         <h3>검수 완료 · 파일 정리 확인</h3>
         <p>완료된 번역 ZIP {reviewPreview.items.length}개는 반드시 보존합니다. {reviewKeepOriginal?'원본 ZIP도 보존합니다.':'원본 ZIP도 삭제합니다. 이후 Studio에서 해당 작업을 다시 열 수 없습니다.'}</p>
@@ -573,7 +933,7 @@ export default function App(){
         <div style={{maxHeight:180,overflowY:'auto',fontSize:12,marginBottom:12}}>{reviewPreview.items.map(item=><div key={item.source} style={{marginBottom:7}}>{item.source.split(/[\\/]/).pop()} · 삭제 대상 {item.remove.length}개</div>)}</div>
         <div className="kwt-bridge-restart-actions"><button type="button" disabled={reviewBusy} onClick={()=>setReviewPreview(null)}>취소</button><button className="primary" type="button" disabled={reviewBusy} onClick={()=>void executeReviewCleanup()}>{reviewBusy?'정리 중…':'정리 확정'}</button></div>
       </div>
-    </div>}
-    <AnimatePresence>{message&&<motion.div className="toast" initial={{opacity:0,y:15}} animate={{opacity:1,y:0}} exit={{opacity:0,y:15}}><AlertCircle size={19}/><span>{message}</span><button onClick={()=>setMessage(null)}>닫기</button></motion.div>}</AnimatePresence>
+    </div>)}
+    <AnimatePresence>{message&&dialogInsideFullscreen(<motion.div className="toast" initial={{opacity:0,y:15}} animate={{opacity:1,y:0}} exit={{opacity:0,y:15}}><AlertCircle size={19}/><span>{message}</span><button onClick={()=>setMessage(null)}>닫기</button></motion.div>)}</AnimatePresence>
   </div>
 }

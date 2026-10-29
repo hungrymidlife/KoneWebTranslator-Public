@@ -1,7 +1,8 @@
 // KWT_STUDIO_INSTALLER_V2_0_0
 export const BASE = 'http://127.0.0.1:18765'
 export type Project = {id:string;source:string;source_name:string;result:string;state:string;detail:string;completed:number;total:number;error:string|null}
-export type LayerData = {region_id:string;ocr_bbox:number[];bbox:number[];source_text:string;text:string;font_size:number;font_id?:string;text_color:string;stroke_color:string;stroke_width:number;align:'left'|'center'|'right';visible:boolean;edited:boolean}
+export type LayerData = {region_id:string;ocr_bbox:number[];bbox:number[];source_text:string;text:string;font_size:number;font_id?:string;text_color:string;stroke_color:string;stroke_width:number;align:'left'|'center'|'right';visible:boolean;edited:boolean;rich_enabled?:boolean;auto_fit?:boolean;shape_fit?:boolean;shape_capable?:boolean;pillow_sync?:boolean;rotation?:number;shape_class_auto?:ShapeClass;shape_class_override?:ShapeClass|null;shape_class_effective?:ShapeClass;shape_confidence?:number;shape_reason?:string; font_id_auto?:string;font_policy_auto?:boolean}
+export type ShapeClass='round_bubble'|'rect_box'|'no_bubble'|'unknown' // KWT_MANUAL_TYPESETTING_AUTOFIT_NAV_V1
 // KWT_STUDIO_FONTS_V1_7_0
 export type FontRecord = {id:string;name:string;family:string;style:string;source_name:string;built_in:boolean;extension:string}
 export type FontLibrary = {default_id:string;fonts:FontRecord[]}
