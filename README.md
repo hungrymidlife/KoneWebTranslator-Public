@@ -268,14 +268,19 @@ KoneWebTranslator-Public/
 
 ## 라이선스 및 외부 구성요소
 
-이 저장소의 프로젝트 소스코드 라이선스는 **GNU GPL-3.0-only**입니다. [LICENSE](LICENSE)와 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), [Studio 관련 고지](studio/THIRD_PARTY_NOTICES_STUDIO.md)를 확인하세요. 제3자 모델/가중치/바이너리는 각각의 라이선스와 배포 조건을 따릅니다.
+이 저장소에서 저작권을 보유하거나 적법하게 라이선스할 수 있는 **프로젝트 자체 소스코드는 GNU GPL-3.0-only**로 배포됩니다. [LICENSE](LICENSE), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), [Studio 관련 고지](studio/THIRD_PARTY_NOTICES_STUDIO.md)를 확인하세요. 프로젝트의 GPL 표기는 제3자 코드·라이브러리·모델에 적용되는 원래의 저작권 및 라이선스를 변경하지 않습니다.
 
-| 구성요소 | 프로젝트/배포처 |
-|---|---|
-| Hayai OCR | [hayai-ocr-v2.5-nova](https://huggingface.co/JustANormalTinkerer/hayai-ocr-v2.5-nova) |
-| Comic Text Detector | [dmMaze/comic-text-detector](https://github.com/dmMaze/comic-text-detector) 및 별도 ONNX 배포본 |
-| LaMa | [advimman/lama](https://github.com/advimman/lama) |
-| llama.cpp | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) |
-| Gemma GGUF | [HauhauCS Gemma 4 GGUF](https://huggingface.co/HauhauCS/Gemma4-12B-QAT-Uncensored-HauhauCS-Balanced) |
+**이 Git 저장소에는 AI 모델 가중치, llama.cpp 실행 파일, Python 가상환경 및 npm/Rust 의존 패키지가 포함되지 않습니다.** 사용자는 필요한 외부 구성요소를 각 배포처에서 별도로 설치하며, 해당 구성요소의 실제 버전·배포 조건을 확인해야 합니다. 소스코드 공개와 외부 AI 모델의 재배포 허가는 서로 별개입니다.
+
+| 구성요소 | 프로젝트/배포처 | 라이선스 확인 사항 |
+|---|---|---|
+| Hayai OCR | [hayai-ocr-v2.5-nova](https://huggingface.co/JustANormalTinkerer/hayai-ocr-v2.5-nova) | 모델 카드에 Apache-2.0 표시; 별도 패키지와 원격 코드는 개별 조건 확인 |
+| Comic Text Detector | [dmMaze/comic-text-detector](https://github.com/dmMaze/comic-text-detector) 및 별도 ONNX 배포본 | upstream 소스 GPL-3.0; 모델 가중치 및 차용 코드의 출처·조건 별도 확인 |
+| LaMa | [advimman/lama](https://github.com/advimman/lama) | 별도 다운로드하는 학습 가중치의 라이선스 확인 필요 |
+| llama.cpp | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | upstream MIT; 실행 파일은 저장소에 미포함 |
+| Google 공식 Gemma 4 | [공식 12B 모델](https://huggingface.co/google/gemma-4-12B-it) | Google 공식 배포본은 Apache-2.0 |
+| 실제 설치 대상 Gemma 4 변형 GGUF | [HauhauCS Gemma 4 GGUF](https://huggingface.co/HauhauCS/Gemma4-12B-QAT-Uncensored-HauhauCS-Balanced) | 배포 페이지 메타데이터에 `gemma`로 표시됨. 공식 Gemma 4의 Apache-2.0 표기만으로 이 변형 모델의 모든 재배포 조건을 단정하지 않으며, 사용·재배포 전 실제 파일과 배포처의 조건을 확인해야 함 |
+
+최근 추가된 OCR 영역 검출 보완, 마스크 편집, 말풍선별 식질, PSD·Photoshop JSX 내보내기 기능에 대한 출처·의존성 설명은 [외부 구성요소 및 출처 고지](THIRD_PARTY_NOTICES.md)에 정리되어 있습니다. 고지 문서가 개별 파일의 저작권 출처를 전부 증명하는 것은 아닙니다.
 
 KoneWebTranslator는 번역 결과의 정확성·완전성을 보장하지 않습니다. 원본 이미지·만화의 저작권 및 웹사이트 이용약관을 준수하고, 결과물을 배포·게시하기 전 필요한 권한을 확인하세요. 이 소프트웨어는 관련 법령이 허용하는 범위에서 별도의 보증 없이 제공됩니다.
