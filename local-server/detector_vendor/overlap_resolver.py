@@ -183,3 +183,65 @@ def resolve_overlaps(regions: list[T], seg, image_size: tuple[int,int], scale: f
                 kept.append(_convert(reg,part))
     # Stable position order for GUI. No touching positive-area overlaps.
     return sorted(kept,key=lambda reg:(reg.y,reg.x))
+
+
+# KWT_FINAL_OVERLAP_V1
+def _positive_overlap_pairs(regions) -> int:
+    """Count actual intersecting bbox pairs; touching edges are not overlaps."""
+    pairs = 0
+    for index, first in enumerate(regions):
+        a = _rect(first)
+        for second in regions[index + 1:]:
+            if _inter(a, _rect(second)) is not None:
+                pairs += 1
+    return pairs
+
+
+def finalize_detected_regions(regions, seg, image_size, scale):
+    """Resolve overlaps on the *final* Phase1 + tile candidate collection.
+
+    Text detection is performed before Hayai OCR, so duplicated overlapping
+    regions would otherwise be OCRed and translated independently.
+    Non-overlapping detections are returned unchanged, preserving their
+    coordinates, confidence, and original order. The existing segmentation-
+    aware resolver clips only overlapping rectangles and keeps unique ink
+    islands. This routine never merges or edits the ONNX model output itself.
+
+    A dedicated experimental opt-out is available at
+    local-server/detector_final_overlap_mode.txt ('off'). It is independent of
+    the legacy detector_overlap_mode.txt, whose earlier default was 'off'.
+    """
+    regions = list(regions)
+    if len(regions) < 2:
+        return regions
+    from pathlib import Path
+    mode_file = Path(__file__).resolve().parents[1] / 'detector_final_overlap_mode.txt'
+    try:
+        mode = mode_file.read_text(encoding='utf-8-sig').strip().lower()
+    except FileNotFoundError:
+        mode = 'on'
+    except OSError as exc:
+        print('[KWT_FINAL_OVERLAP] unreadable mode file; using on: ' + str(exc), flush=True)
+        mode = 'on'
+    if mode == 'off':
+        return regions
+    if mode != 'on':
+        print('[KWT_FINAL_OVERLAP] invalid mode; using on: ' + repr(mode), flush=True)
+    before = _positive_overlap_pairs(regions)
+    if not before:
+        return regions
+    try:
+        result = resolve_overlaps(regions, seg, image_size, scale)
+        remaining = _positive_overlap_pairs(result)
+        if remaining:
+            raise ValueError(f'overlap resolver left {remaining} intersecting pairs')
+        print(
+            f'[KWT_FINAL_OVERLAP] overlap_pairs={before}->0 '
+            f'boxes={len(regions)}->{len(result)} '
+            f'no_model_change=1', flush=True
+        )
+        return result
+    except (ValueError, TypeError, IndexError, OverflowError) as exc:
+        # Preserve existing OCR coverage instead of failing an entire ZIP.
+        print(f'[KWT_FINAL_OVERLAP] safe fallback: {type(exc).__name__}: {exc}', flush=True)
+        return regions

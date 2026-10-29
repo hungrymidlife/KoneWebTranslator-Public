@@ -136,6 +136,12 @@ class ComicTextDetectorONNX:
     def detect(self, image: Image.Image, confidence: float = 0.0) -> list[TextRegion]:
         tensor, scale = prepare_input(image)
         raw, seg = self.session.run(["blk", "seg"], {self.input_name: tensor})
+        # EXP_MANGA_LINE_V1: carry the main-image text probability mask into OCR.
+        # Supplemental tiles use session.run directly and do not replace this mask.
+        try:
+            self.last_text_mask = _model_text_mask(seg, image.size, scale)
+        except (ValueError,TypeError,IndexError) as exc:
+            self.last_text_mask = None
         # KWT_CONFIDENCE_GUI_V1: runtime threshold from GUI, independent of older 0.0 source patches.
         try:
             import json as _kwt_json
@@ -147,6 +153,19 @@ class ComicTextDetectorONNX:
         except (OSError, ValueError, TypeError) as _kwt_err:
             print(f'[DETECTOR] confidence config invalid; using 0.3: {_kwt_err}', flush=True)
             confidence = 0.3
+        # KWT_DETECTOR_PHASE1_LIVE_V1: enable improved live detection; reversible.
+        from .phase1_refiner import phase1_active, phase1_refine
+        # KWT_DETECTOR_PHASE2_TILES_V1: live full-page + optional tile recovery.
+        if phase1_active(Path(__file__).resolve().parents[1]):
+            base = phase1_refine(raw, seg, image.size, scale, confidence)
+            from .tiled_detector_v1 import tile_active, augment
+            if tile_active(Path(__file__).resolve().parents[1]):
+                base = augment(self, image, base, confidence)
+            # KWT_FINAL_OVERLAP_V1: run after BOTH the Phase1 mask-aware
+            # refiner and tiled recovery. Earlier code returned overlapping
+            # regions directly and could OCR/translate the same text twice.
+            from .overlap_resolver import finalize_detected_regions
+            return finalize_detected_regions(base, seg, image.size, scale)
         regions = decode_blocks(raw, image.size, scale, confidence)
         from .overlap_resolver import resolve_overlaps
         cleaned = refine_regions(regions, seg, image.size, scale)

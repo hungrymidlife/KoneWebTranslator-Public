@@ -5,7 +5,7 @@ import './ChatCenter.css'
 
 type ChatAttachment={id:string;name:string;kind:'image'|'document'|'video';size:number}
 type ChatMessage={role:'user'|'assistant';content:string;attachments?:ChatAttachment[];generation?:{
-  finish_reason:string;completion_tokens:number;segments:number;truncated:boolean;thinking_enabled?:boolean;tool_events?:{tool:string;status:'ok'|'error'}[];
+  finish_reason:string;completion_tokens:number;segments:number;continuation_segments?:number;truncated:boolean;thinking_enabled?:boolean;tool_events?:{tool:string;status:'ok'|'error'}[];
   review_verification?:{status:'blocked'|'partial'|'evidence_checked';verified_findings:number;rejected_findings:number;truncated:boolean;reviewed_commits?:number;changed_files_returned?:number} // KWT_PRIVATE_REVIEW_GUARD_V2_7
 }}
 type ChatRecord={
@@ -349,7 +349,7 @@ export default function ChatCenter({gemmaOnline}:{gemmaOnline:boolean}){
             {m.role==='assistant'&&m.generation&&<div className={'kwt-chat-generation'+(m.generation.truncated?' warn':'')}>
               {m.generation.truncated?'⚠ 답변이 아직 완성되지 않았습니다. ':''}
               생성 {m.generation.completion_tokens}토큰 · 종료 {m.generation.finish_reason}
-              {m.generation.segments>1?` · 자동 이어쓰기 ${m.generation.segments}회`:''}
+              {m.generation.continuation_segments!==undefined?(m.generation.continuation_segments>0?` · 자동 이어쓰기 ${m.generation.continuation_segments}회`:''):(m.generation.segments>1?` · 자동 이어쓰기 ${m.generation.segments-1}회`:'')}
               {` · 추론 ${m.generation.thinking_enabled?'ON':'OFF'}`}
             </div>}
           </div>
@@ -364,7 +364,7 @@ export default function ChatCenter({gemmaOnline}:{gemmaOnline:boolean}){
         <input ref={fileInput} type="file" multiple className="kwt-chat-file-input" accept="image/*,video/mp4,video/webm,video/x-matroska,video/quicktime,.txt,.md,.csv,.json,.jsonl,.log,.srt,.vtt,.html,.xml,.yaml,.yml,.ini,.cfg,.py,.js,.ts,.tsx,.jsx,.css,.sh,.ps1,.bat,.sql,.toml,.pdf" onChange={e=>void uploadFiles(e.target.files)}/>
         {attachments.length>0&&<div className="kwt-chat-file-list">{attachments.map(a=><span className="kwt-chat-file" key={a.id}>{a.kind==='image'?<ImageIcon size={13}/>:a.kind==='video'?<Video size={13}/>:<FileText size={13}/>} {a.name}<button type="button" onClick={()=>setAttachments(v=>v.filter(x=>x.id!==a.id))} title="첨부 취소"><X size={13}/></button></span>)}</div>}
         <div className="kwt-chat-file-toolbar"><button type="button" disabled={!chat||busy||attachments.length>=4} onClick={()=>fileInput.current?.click()}><Paperclip size={15}/> 파일 첨부</button><span>사진·영상·PDF·텍스트/코드 · 최대 4개</span><label>답변 저장 형식 <select value={saveFormat} onChange={e=>setSaveFormat(e.target.value)}>{['md','txt','json','csv','html','py','js','ts','css','sql'].map(ext=><option key={ext} value={ext}>{ext}</option>)}</select></label></div>
-        {chat?.github_tools_enabled&&<div className="kwt-chat-history-shortcut"><button type="button" disabled={busy} onClick={()=>setInput("사용자가 지정한 GitHub 저장소(owner/repo)의 main 브랜치 최근 커밋 5개를 실제 diff로 비교해서 변경점·회귀 위험·누락 테스트를 근거와 함께 리뷰해 줘. 저장소를 지정하지 않았다면 먼저 owner/repo를 물어봐. 변경되지 않은 파일을 리뷰했다고 주장하지 마.")}>최근 5개 Git 커밋 리뷰 요청</button></div>} {/* KWT_PRIVATE_HISTORY_V2_6 */}
+        {chat?.github_tools_enabled&&<div className="kwt-chat-history-shortcut"><button type="button" disabled={busy} onClick={()=>setInput("hungrymidlife/KoneWebTranslator-Public 저장소 main 브랜치의 최근 커밋 5개(자동 백업 포함)를 실제 diff로 비교해서 변경점·회귀 위험·누락 테스트를 근거와 함께 리뷰해 줘. 변경되지 않은 파일을 리뷰했다고 주장하지 마.")}>최근 5개 Git 커밋 리뷰 요청</button></div>} {/* KWT_PRIVATE_HISTORY_V2_6 */}
         <div className="kwt-chat-compose-row">
           <textarea value={input} disabled={!chat||busy} rows={3} maxLength={6000} placeholder="메시지 입력 (Enter 전송 · Shift+Enter 줄바꿈)" onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send()}}}/>
           <button type="button" className="kwt-chat-primary" disabled={!chat||busy||(!input.trim()&&!attachments.length)||!gemmaOnline} onClick={()=>void send()}><Send size={18}/></button>

@@ -100,6 +100,9 @@ def typeset(raw, regions, report=None, text_color_mode='auto', cache_dir=None, r
     with Image.open(io.BytesIO(raw)) as opened:
         im = ImageOps.exif_transpose(opened).convert('RGB')
     im, mask, inpaint_meta = lama_restore(im, regions, report, cache_dir=cache_dir, render_cfg=render_cfg)
+    # Keep an immutable cleaned source for region shape classification: prior
+    # rendered Korean layers must not alter the next region's contour analysis.
+    policy_clean_image=im.copy()
     draw = ImageDraw.Draw(im)
     placements = []
     for region in regions:
@@ -121,27 +124,49 @@ def typeset(raw, regions, report=None, text_color_mode='auto', cache_dir=None, r
         from bubble_safe_layout_v2 import propose_safe_bbox
         from virtual_typesetting_box import virtual_bbox, drawn_bbox
         ocr_box = [x,y,w,h]
+        # KWT_SHAPE_FONT_V1: classify cleaned background before line measurement.
+        from shape_font_policy import classify_shape,choose_font
+        shape_data=classify_shape(policy_clean_image,ocr_box)
+        shape_class=shape_data['shape_class']
+        selected_font_id=choose_font(shape_class,render_cfg,kwt_default_font_id())
+        font_for_region=lambda size: kwt_registered_font(size,selected_font_id)
         virtual_box = virtual_bbox(ocr_box, im.size, render_cfg)
         enlarged = virtual_box != ocr_box
         # OpenCV sees the expanded candidate, NOT the raw Japanese OCR rectangle.
         # Search the cleaned image with OCR as the bubble anchor. A safe bubble
         # may legitimately be narrower than the original OCR rectangle.
-        safe_box, layout_reason = propose_safe_bbox(im, virtual_box, seed_bbox=ocr_box)
-        target_box = list(safe_box or virtual_box)
-        info = layout_and_draw(draw, translated, target_box, font_for, style, render_cfg=render_cfg)
-        if info is None and safe_box is not None:
-            # No invisible Korean: retry in the full page-clipped virtual area.
-            target_box = virtual_box
-            info = layout_and_draw(draw, translated, target_box, font_for, style, render_cfg=render_cfg)
-            layout_reason += '_fit_fallback'
+        # EXP_MANGA_SHAPE_V1: first try row-specific available widths from the
+        # speech bubble contour. Existing safe-rectangle layout is the fallback.
+        # The chosen text row positions are stored in metadata for exact replay.
+        from manga_shape_layout import try_shape_layout
+        safe_box = None
+        target_box = virtual_box
+        info, layout_reason = try_shape_layout(im, virtual_box, ocr_box, translated,
+                                               draw, font_for_region, style, render_cfg)
+        if info is None:
+            safe_box, layout_reason = propose_safe_bbox(im, virtual_box, seed_bbox=ocr_box)
+            target_box = list(safe_box or virtual_box)
+            info = layout_and_draw(draw, translated, target_box, font_for_region, style, render_cfg=render_cfg)
+            if info is None and safe_box is not None:
+                # Original no-invisible-Korean fallback is unchanged.
+                target_box = virtual_box
+                info = layout_and_draw(draw, translated, target_box, font_for_region, style, render_cfg=render_cfg)
+                layout_reason += '_fit_fallback'
         if info is not None:
-            info['font_id'] = kwt_default_font_id()
-            info['layout_source'] = ('virtual_ocr_bbox' if enlarged else 'ocr_bbox') + ('_bubble_safe' if target_box == safe_box else '_fallback')
+            info['font_id']=selected_font_id
+            info['font_id_auto']=selected_font_id
+            info['shape_font_policy_enabled']=bool(render_cfg.get('shape_font_policy_enabled',False))
+            info['shape_class_auto']=shape_class
+            info['shape_class_effective']=shape_class
+            info['shape_confidence']=shape_data['shape_confidence']
+            info['shape_reason']=shape_data['shape_reason']
+            info['layout_source'] = ('bubble_shape_mask' if info.get('layout') == 'manga_shape_rows_v1'
+                else ('virtual_ocr_bbox' if enlarged else 'ocr_bbox') + ('_bubble_safe' if target_box == safe_box else '_fallback'))
             info['bubble_detection_reason'] = layout_reason
             info['original_ocr_bbox'] = ocr_box
             info['virtual_typesetting_bbox'] = virtual_box
             info['typesetting_bbox'] = list(target_box)
-            info['rendered_text_bbox'] = drawn_bbox(target_box, info, im.size)
+            info['rendered_text_bbox'] = info.get('shape_rendered_bbox') or drawn_bbox(target_box, info, im.size)
         if info is None:
             placements.append({'region_id':region.get('id'), 'status':'text_overflow',
                                'bbox':[x,y,w,h], 'virtual_typesetting_bbox':virtual_box,

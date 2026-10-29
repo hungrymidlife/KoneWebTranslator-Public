@@ -17,6 +17,7 @@ import urllib.request
 from pathlib import Path
 
 from chat_attachments import prepare as kwt_prepare_attachments, delete_conversation as kwt_delete_attachments  # KWT_CHAT_ATTACH_V2_3
+from chat_memory_quality import summarize as kwt_quality_summarize  # KWT_LOCAL_CHAT_VERIFIED_MEMORY_V2_0
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / 'studio-bridge' / '.studio_runtime' / 'chat'
@@ -268,34 +269,9 @@ def _generate_complete(prompt: list, item: dict, chat_cfg=None) -> tuple[str, di
 
 
 def _summarize(previous: str, messages: list, chat_cfg=None) -> str:
-    chat_cfg = chat_cfg or _CHAT_DEFAULTS
-    # Summarize in bounded chunks, never discard the original transcript.
-    summary = previous
-    chunks = []
-    buffer = ''
-    for msg in messages:
-        prefix = ('사용자' if msg['role'] == 'user' else 'AI') + ': '
-        content = prefix + msg['content'] + '\n'
-        # Extremely long turns are broken into pieces to avoid context overflow.
-        while content:
-            piece, content = content[:1300], content[1300:]
-            if buffer and _estimate(buffer + piece) > chat_cfg['summary_chunk_budget']:
-                chunks.append(buffer)
-                buffer = ''
-            buffer += piece
-    if buffer:
-        chunks.append(buffer)
-    for chunk in chunks:
-        prompt = ('기존 장기 기억과 추가 대화를 하나의 간결한 한국어 기억으로 통합해. '
-                  '인물·고유명사·사용자 선호·결정사항·진행 중 작업·중요한 수치를 우선 보존하고, '
-                  '추측으로 내용을 만들지 마. 대화 상대에게 답하지 말고 기억 요약만 출력해. '
-                  '최대 450 한국어 글자 정도로 정리해.\n\n'
-                  '기존 기억:\n' + summary[:chat_cfg['summary_previous_chars']] + '\n\n추가 대화:\n' + chunk)
-        summary_text, summary_finish, _ = _request([{'role': 'user', 'content': prompt}], chat_cfg['summary_output_tokens'], 0.15, timeout=chat_cfg['timeout_sec'])
-        if summary_finish == 'length':
-            raise RuntimeError('대화 기억 요약이 출력 한도로 중단됐습니다. 답변 길이를 늘려 다시 시도하세요.')
-        summary = summary_text[:chat_cfg['summary_max_chars']]
-    return summary
+    # KWT_LOCAL_CHAT_VERIFIED_MEMORY_V2_0: bounded evidence, review and retry.
+    return kwt_quality_summarize(previous, messages, chat_cfg or _CHAT_DEFAULTS,
+                                 _request, _estimate)
 
 
 def _messages_for(item: dict, pending: dict, chat_cfg=None) -> list:
@@ -331,8 +307,14 @@ def _messages_for(item: dict, pending: dict, chat_cfg=None) -> list:
             raise ValueError('현재 메시지가 컨텍스트 예산을 초과합니다. 입력을 줄이거나 서버 -c 값을 늘려 주세요.')
         # Summarize at most four oldest messages per pass. Preserve chronology.
         n = min(chat_cfg['summary_batch_messages'], len(transcript) - 1 - cursor)
-        item['summary'] = _summarize(item.get('summary', ''), transcript[cursor:cursor+n], chat_cfg)
+        # Keep memory small enough for the configured conversation context.
+        memory_cfg = dict(chat_cfg)
+        memory_cfg['_memory_target_chars'] = max(300, min(chat_cfg['summary_max_chars'], int(budget * 0.3)))
+        item['summary'] = _summarize(item.get('summary', ''), transcript[cursor:cursor+n], memory_cfg)
         cursor += n
+        # Atomic checkpoint after each fully verified group. Original transcript stays intact.
+        item['summary_through'] = cursor
+        _save(item)
     raise RuntimeError('대화 컨텍스트를 구성하지 못했습니다.')
 
 

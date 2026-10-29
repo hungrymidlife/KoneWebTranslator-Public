@@ -20,4 +20,9 @@ def detect_regions(image: Image.Image):
     return _detector.detect(image)
 
 
+def last_text_mask():
+    """Only read while OCR lock is held, immediately after detect_regions."""
+    return getattr(_detector, 'last_text_mask', None) if _detector is not None else None
+
+
 _detector = None

@@ -140,7 +140,11 @@ def current_ocr_settings():
 
 
 def ocr_identity(cfg):
-    return 'hayai-v2.5-nova-%s-%s' % (cfg['mode'], cfg['patches'])
+    from detector_vendor.phase1_refiner import phase1_active
+    from detector_vendor.tiled_detector_v1 import tile_active
+    active = phase1_active()
+    profile = 'hayai-v2.5-nova-%s-%s' % (cfg['mode'], cfg['patches'])
+    return profile + ('-detector-p1' if active else '') + ('-detector-tiles' if active and tile_active() else '') + '-manga-order-v1-seglines-v2'
 
 
 def process_job(job_id, items, pad_x_percent, pad_y_percent):
@@ -176,7 +180,16 @@ def process_job(job_id, items, pad_x_percent, pad_y_percent):
                 width, height = im.size
                 # KWT_UNIFIED_WORKERS_V1_2: detector lazy-init / shared ONNX session guard.
                 with ocr_lock:
-                    regions = detect_regions(im)
+                    regions = detect_regions(im)
+                    from detector_bridge import last_text_mask
+                    line_mask = last_text_mask()
+                    from manga_text_lines import split_lines
+                    line_geometry = {
+                        (r.x,r.y,r.width,r.height):split_lines(line_mask,r,im.size)
+                        for r in regions
+                    }
+                    from region_reading_order import reading_order
+                    regions = reading_order(regions)
                 texts = []
                 for idx, reg in enumerate(regions, 1):
                     x1, y1 = max(0, reg.x), max(0, reg.y)
@@ -190,15 +203,40 @@ def process_job(job_id, items, pad_x_percent, pad_y_percent):
                     cx1, cy1 = max(0, x1-pad_x), max(0, y1-pad_y)
                     cx2, cy2 = min(width, x2+pad_x), min(height, y2+pad_y)
                     crop = im.crop((cx1, cy1, cx2, cy2))
+                    # EXP_MANGA_LINE_V2: one Hayai pass per split line,
+                    # otherwise one full-region pass. Keep original region ID.
                     hayai_text = ''
                     hayai_error = ''
-                    if hayai is not None:
+                    ocr_line_boxes = line_geometry.get((reg.x,reg.y,reg.width,reg.height),[])
+                    ocr_line_texts = []
+                    if len(ocr_line_boxes) >= 2 and hayai is not None:
+                        for bx,by,bw,bh in ocr_line_boxes:
+                            if bw<5 or bh<5:
+                                ocr_line_texts=[];break
+                            line_pad=max(2,min(9,round(min(bw,bh)*.05)))
+                            line_crop=im.crop((max(0,bx-line_pad),max(0,by-line_pad),
+                                              min(width,bx+bw+line_pad),min(height,by+bh+line_pad)))
+                            try:
+                                line_text=str(hayai.recognize(line_crop,cfg['patches']) or '').strip()
+                            except Exception as line_exc:
+                                safe_ocr_print('[OCR LINE] full-region fallback:',
+                                               type(line_exc).__name__,str(line_exc),flush=True)
+                                ocr_line_texts=[];break
+                            if not line_text:
+                                ocr_line_texts=[];break
+                            ocr_line_texts.append(line_text)
+                    if len(ocr_line_boxes)>=2 and len(ocr_line_texts)==len(ocr_line_boxes):
+                        hayai_text = '\n'.join(ocr_line_texts)
+                    elif hayai is not None:
                         try:
-                            hayai_text = hayai.recognize(crop, cfg['patches'])
+                            hayai_text = str(hayai.recognize(crop,cfg['patches']) or '')
                         except Exception as exc:
                             hayai_error = f'{type(exc).__name__}: {exc}'
                             raise
                     text = hayai_text
+                    if len(ocr_line_boxes)>=2:
+                        safe_ocr_print(f'[OCR LINES] job={job_id} image={item["index"]} region={idx} '
+                                       f'count={len(ocr_line_boxes)} applied={len(ocr_line_texts)==len(ocr_line_boxes)}',flush=True)
                     # Run conditional Windows OCR using Hayai text and status symbols.
                     # Detector box aspect ratio is deliberately ignored.
                     from windows_ocr import should_use_windows, recognize_windows
@@ -233,7 +271,11 @@ def process_job(job_id, items, pad_x_percent, pad_y_percent):
                         'windows_ocr': windows_result, 'windows_ocr_raw_text': windows_raw_text, 'windows_ocr_sorted_text': windows_sorted_text, 'windows_ocr_score': None,
                         'windows_ocr_reasons': reasons, 'selected_engine': selected_engine,
                         'confidence': None,  # Hayai OCR does not provide a calibrated confidence.
-                        'detection_confidence': round(float(reg.confidence), 4),
+                        'detection_confidence': round(float(reg.confidence), 4),
+                        'reading_order': idx, 'text_orientation': ('vertical' if (y2-y1) > 1.25*(x2-x1) else 'horizontal'),
+                        'ocr_line_boxes': ocr_line_boxes,
+                        'ocr_line_texts': ocr_line_texts if len(ocr_line_texts)==len(ocr_line_boxes) else [],
+                        'ocr_line_applied': bool(ocr_line_texts) and len(ocr_line_texts)==len(ocr_line_boxes),
                         'polygon': [[x1,y1],[x2,y1],[x2,y2],[x1,y2]],
                         'bbox': [x1, y1, x2-x1, y2-y1],
                         'ocr_crop_bbox': [cx1, cy1, cx2-cx1, cy2-cy1]

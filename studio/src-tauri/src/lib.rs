@@ -1,3 +1,4 @@
+mod kwt_studio_tray; // KWT_STUDIO_TRAY_V1
 // KWT_PRIVATE_CHAT_SAVE_V2_6_1: save only user-selected text/code files (local Tauri UI).
 #[tauri::command]
 fn kwt_save_chat_answer(path: String, content: String) -> Result<(), String> {
@@ -27,7 +28,8 @@ fn kwt_save_chat_answer(path: String, content: String) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![kwt_save_chat_answer])
+        .setup(|app| { kwt_studio_tray::setup(app)?; Ok(()) })
+        .invoke_handler(tauri::generate_handler![kwt_save_chat_answer, kwt_studio_tray::kwt_hide_to_tray])
         .run(tauri::generate_context!())
         .expect("error while running KoneWebTranslator Studio");
 }
